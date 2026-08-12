@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Phone, ShieldCheck, UserRound, Zap } from "lucide-react";
 import { useAtlasGrid } from "@/context/AtlasGridContext";
 
@@ -56,6 +56,7 @@ export default function Login() {
 
       <div className="login-form-side">
         <div className="login-form-wrap">
+          <Link className="login-back-home" to="/">← Back to AtlasGrid overview</Link>
           <div className="mobile-login-logo"><span><Zap size={16} fill="currentColor" /></span><b>Atlas Grid Inspection</b></div>
           <div className="login-form-heading"><div className="login-form-icon"><LockKeyhole size={20} /></div><h2>Welcome back</h2><p>Sign in with your assigned email address or phone number.</p></div>
           <form onSubmit={submit}>

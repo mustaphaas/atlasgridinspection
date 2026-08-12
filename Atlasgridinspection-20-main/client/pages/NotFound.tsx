@@ -8,7 +8,7 @@ export default function NotFound() {
         <span className="ag-not-found-icon"><MapPinOff size={27} /></span>
         <h1>Page not found</h1>
         <p>The requested AtlasGrid workspace page does not exist or is no longer available.</p>
-        <Link to="/"><ArrowLeft size={16} /> Return to dashboard</Link>
+        <Link to="/"><ArrowLeft size={16} /> Return to homepage</Link>
       </section>
     </main>
   );
