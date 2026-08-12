@@ -25,6 +25,143 @@ export type WorkflowStatus =
 
 export type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 
+export type FindingSeverity = "Critical" | "Major" | "Moderate" | "Minor";
+
+export type InspectionEquipmentRecord = {
+  id: string;
+  type: string;
+  manufacturer: string;
+  model: string;
+  serialNumber: string;
+  quantity: number;
+  capacity: string;
+  condition: "Good" | "Fair" | "Poor";
+  operational: boolean;
+};
+
+export type InspectionFindingRecord = {
+  id: string;
+  category: string;
+  severity: FindingSeverity;
+  description: string;
+  correctiveAction: string;
+  evidenceReference?: string;
+  status: "Open" | "Under Review" | "Closed";
+};
+
+export type InspectionEvidenceRecord = {
+  id: string;
+  category: string;
+  fileName: string;
+  kind: "Photo" | "Video";
+  capturedAt: string;
+  coordinates: string;
+  projectId: string;
+  officerName: string;
+};
+
+export type InspectionSignatureRecord = {
+  name: string;
+  role: string;
+  phone: string;
+  signedAt: string;
+  captured: boolean;
+};
+
+export type ConsultantReviewRecord = {
+  reviewerName: string;
+  reviewerId: string;
+  reviewedAt: string;
+  decision: "Pending" | "Approved" | "Returned";
+  score: number;
+  notes: string;
+  gpsChecked: boolean;
+  evidenceChecked: boolean;
+  signaturesChecked: boolean;
+  formCompletenessChecked: boolean;
+};
+
+export type ReaVerificationRecord = {
+  verifierName: string;
+  verifierId: string;
+  verifiedAt: string;
+  decision: "Pending" | "Verified" | "Returned" | "Rejected";
+  notes: string;
+  controlledRecordNumber?: string;
+};
+
+export type InspectionFormRecord = {
+  reportId: string;
+  formVersion: string;
+  inspectionType: "Completion" | "Progress" | "Routine" | "Re-inspection";
+  startedAt: string;
+  submittedAt: string;
+  deviceId: string;
+  gps: {
+    approvedCoordinates: string;
+    capturedCoordinates: string;
+    distanceM: number;
+    accuracyM: number;
+    capturedAt: string;
+    verified: boolean;
+  };
+  contractorRepresentative: {
+    name: string;
+    role: string;
+    phone: string;
+    presentOnSite: boolean;
+  };
+  equipment: InspectionEquipmentRecord[];
+  meter: {
+    available: boolean;
+    type: string;
+    number: string;
+    manufacturer: string;
+    condition: string;
+    reading: string;
+  };
+  transformer: {
+    available: boolean;
+    manufacturer: string;
+    serialNumber: string;
+    ratingKva: number;
+    condition: string;
+    operational: boolean;
+  };
+  infrastructure: {
+    expectedPoles: number;
+    observedPoles: number;
+    damagedPoles: number;
+    cableType: string;
+    expectedCableLengthM: number;
+    installedCableLengthM: number;
+  };
+  capacity: {
+    approvedKw: number;
+    observedKw: number;
+    variancePercent: number;
+  };
+  beneficiaries: {
+    expected: number;
+    verified: number;
+    residential: number;
+    commercial: number;
+    publicFacilities: number;
+  };
+  observations: string;
+  recommendation: string;
+  findings: InspectionFindingRecord[];
+  evidence: InspectionEvidenceRecord[];
+  signatures: {
+    community: InspectionSignatureRecord;
+    contractor: InspectionSignatureRecord;
+    officer: InspectionSignatureRecord;
+  };
+  declarationAccepted: boolean;
+  consultantReview?: ConsultantReviewRecord;
+  reaVerification?: ReaVerificationRecord;
+};
+
 export type ContractRecord = {
   id: string;
   projectId: string;
@@ -60,8 +197,12 @@ export type ClaimRecord = {
   status: WorkflowStatus;
   consultant?: string;
   consultantLead?: string;
+  consultantAssignedAt?: string;
+  assignmentInstructions?: string;
   fieldOfficer?: string;
   fieldOfficerId?: string;
+  fieldAssignedAt?: string;
+  fieldInstructions?: string;
   dueDate?: string;
   priority: "Normal" | "High" | "Urgent" | "Critical";
   arrivalVerified: boolean;
@@ -72,6 +213,7 @@ export type ClaimRecord = {
   criticalFindings?: number;
   evidenceCount?: number;
   recommendation?: string;
+  inspectionForm?: InspectionFormRecord;
   lastUpdated: string;
 };
 
@@ -100,6 +242,12 @@ export type CreateFieldOfficerInput = {
   organization: string;
   temporaryPin: string;
   email?: string;
+};
+
+export type UpdateProfileInput = {
+  name: string;
+  phone?: string;
+  state: string;
 };
 
 export type ActionResult<T = undefined> = {
@@ -311,6 +459,8 @@ const initialClaims: ClaimRecord[] = [
     status: "Consultant Assigned",
     consultant: "NorthGrid Consultants",
     consultantLead: "Engr. Fatima Bello",
+    consultantAssignedAt: "Today, 08:38 AM",
+    assignmentInstructions: "Prioritize equipment serial verification, beneficiary confirmation and complete GPS-tagged evidence before consultant QA.",
     dueDate: "18 Aug 2026",
     priority: "High",
     arrivalVerified: false,
@@ -337,6 +487,8 @@ const initialClaims: ClaimRecord[] = [
     consultantLead: "Engr. Fatima Bello",
     fieldOfficer: "Amina Yusuf",
     fieldOfficerId: "FO-0198",
+    fieldAssignedAt: "Today, 08:52 AM",
+    fieldInstructions: "Verify arrival within the 250 m geofence, capture transformer and meter nameplates, confirm installed capacity and collect both representative signatures.",
     dueDate: "14 Aug 2026",
     priority: "Urgent",
     arrivalVerified: false,
@@ -472,6 +624,190 @@ const initialClaims: ClaimRecord[] = [
   },
 ];
 
+function buildSampleInspectionForm(
+  claim: ClaimRecord,
+  stage: "consultant-review" | "pending-rea" | "verified" | "returned",
+): InspectionFormRecord {
+  const approvedCapacity = Number(claim.capacity.replace(/[^0-9.]/g, "")) || 0;
+  const observedCapacity = stage === "returned"
+    ? Math.max(0, approvedCapacity - 18)
+    : stage === "pending-rea"
+      ? Math.max(0, approvedCapacity - 4)
+      : approvedCapacity;
+  const verifiedBeneficiaries = stage === "returned"
+    ? Math.max(0, claim.beneficiaries - 96)
+    : Math.max(0, claim.beneficiaries - 12);
+  const officerName = claim.fieldOfficer ?? "Field Officer";
+  const reportId = `AIR-${claim.id.replace("CLM-", "")}`;
+  const capturedAt = stage === "verified" ? "01 Aug 2026, 11:18 AM" : "11 Aug 2026, 02:42 PM";
+  const submittedAt = stage === "verified" ? "01 Aug 2026, 12:06 PM" : "11 Aug 2026, 03:18 PM";
+  const evidenceCount = Math.max(6, claim.evidenceCount ?? 8);
+  const evidenceCategories = ["Site overview", "Solar array", "Inverter", "Transformer", "Meter", "Distribution poles", "Cable route", "Beneficiaries", "Defect", "Nameplate", "Community representative", "Contractor representative"];
+  const evidence: InspectionEvidenceRecord[] = Array.from({ length: evidenceCount }, (_, index) => ({
+    id: `${reportId}-EV-${String(index + 1).padStart(2, "0")}`,
+    category: evidenceCategories[index % evidenceCategories.length],
+    fileName: `${claim.projectId.toLowerCase()}-${String(index + 1).padStart(2, "0")}.jpg`,
+    kind: "Photo",
+    capturedAt,
+    coordinates: claim.coordinates,
+    projectId: claim.projectId,
+    officerName,
+  }));
+
+  const findings: InspectionFindingRecord[] = stage === "returned"
+    ? [
+        { id: `${reportId}-F01`, category: "Equipment", severity: "Critical", description: "Transformer serial plate was not captured and the installed rating could not be independently confirmed.", correctiveAction: "Expose and capture the transformer nameplate, serial number and rating during re-inspection.", evidenceReference: evidence[3]?.id, status: "Open" },
+        { id: `${reportId}-F02`, category: "Safety", severity: "Critical", description: "Earthing continuity evidence was incomplete at the transformer plinth.", correctiveAction: "Complete earthing works and provide a tested earth-resistance reading.", evidenceReference: evidence[8]?.id, status: "Open" },
+        { id: `${reportId}-F03`, category: "Capacity", severity: "Major", description: "Observed installed capacity is below the approved contract capacity.", correctiveAction: "Reconcile installed equipment against the approved schedule and BOQ.", status: "Under Review" },
+      ]
+    : stage === "pending-rea"
+      ? [
+          { id: `${reportId}-F01`, category: "Safety", severity: "Major", description: "Transformer earthing conductor requires clearer visual confirmation.", correctiveAction: "REA reviewer to confirm evidence file 09 before closure.", evidenceReference: evidence[8]?.id, status: "Under Review" },
+          { id: `${reportId}-F02`, category: "Labelling", severity: "Minor", description: "Two outgoing feeder labels were not weatherproof.", correctiveAction: "Replace labels during routine maintenance.", evidenceReference: evidence[5]?.id, status: "Open" },
+        ]
+      : [
+          { id: `${reportId}-F01`, category: "Labelling", severity: "Minor", description: "One distribution panel label requires permanent engraving.", correctiveAction: "Replace the temporary label during the next maintenance visit.", evidenceReference: evidence[2]?.id, status: stage === "verified" ? "Closed" : "Open" },
+        ];
+
+  const consultantReview: ConsultantReviewRecord | undefined = stage === "consultant-review"
+    ? {
+        reviewerName: claim.consultantLead ?? "Consultant Lead",
+        reviewerId: "CONS-QA-PENDING",
+        reviewedAt: "Pending review",
+        decision: "Pending",
+        score: claim.score ?? 90,
+        notes: "Field submission is ready for consultant quality assurance.",
+        gpsChecked: false,
+        evidenceChecked: false,
+        signaturesChecked: false,
+        formCompletenessChecked: false,
+      }
+    : {
+        reviewerName: claim.consultantLead ?? "Consultant Lead",
+        reviewerId: claim.consultant === "Eastern Energy Review" ? "CONS-EER-014" : "CONS-NGC-001",
+        reviewedAt: stage === "verified" ? "01 Aug 2026, 01:20 PM" : "11 Aug 2026, 04:05 PM",
+        decision: stage === "returned" ? "Returned" : "Approved",
+        score: claim.score ?? 90,
+        notes: stage === "returned"
+          ? "The submission is incomplete and must be repeated after corrective works."
+          : "GPS, form completeness, evidence metadata and signatures were checked. The report is recommended for REA verification.",
+        gpsChecked: true,
+        evidenceChecked: true,
+        signaturesChecked: true,
+        formCompletenessChecked: true,
+      };
+
+  const reaVerification: ReaVerificationRecord | undefined = stage === "verified"
+    ? {
+        verifierName: "Musa Danjuma",
+        verifierId: "USR-002",
+        verifiedAt: "12 Aug 2026, 09:28 AM",
+        decision: "Verified",
+        notes: "Report passed final REA evidence, GPS, capacity and compliance checks.",
+        controlledRecordNumber: `REA-CR-${claim.id.replace(/\D/g, "").slice(-6)}`,
+      }
+    : stage === "pending-rea"
+      ? {
+          verifierName: "Unassigned REA reviewer",
+          verifierId: "PENDING",
+          verifiedAt: "Pending",
+          decision: "Pending",
+          notes: "Awaiting final REA review.",
+        }
+      : undefined;
+
+  return {
+    reportId,
+    formVersion: "REA-FI-2026.2",
+    inspectionType: stage === "returned" ? "Re-inspection" : claim.priority === "Critical" ? "Completion" : "Progress",
+    startedAt: stage === "verified" ? "01 Aug 2026, 09:42 AM" : "11 Aug 2026, 10:15 AM",
+    submittedAt,
+    deviceId: `AG-${claim.fieldOfficerId ?? "DEVICE"}-A12`,
+    gps: {
+      approvedCoordinates: claim.coordinates,
+      capturedCoordinates: claim.coordinates,
+      distanceM: claim.arrivalDistanceM ?? 24,
+      accuracyM: 7,
+      capturedAt: stage === "verified" ? "01 Aug 2026, 09:38 AM" : "11 Aug 2026, 10:10 AM",
+      verified: true,
+    },
+    contractorRepresentative: {
+      name: stage === "verified" ? "Emeka Nwosu" : "Abdullahi Garba",
+      role: "Site Supervisor",
+      phone: "+2348037004411",
+      presentOnSite: true,
+    },
+    equipment: [
+      { id: `${reportId}-EQ-01`, type: "Solar PV modules", manufacturer: "Jinko Solar", model: "JKM550M-72HL4", serialNumber: `${claim.projectId}-PV-001`, quantity: Math.max(96, Math.round(approvedCapacity * 2.1)), capacity: `${approvedCapacity} kW array`, condition: "Good", operational: true },
+      { id: `${reportId}-EQ-02`, type: "Hybrid inverter", manufacturer: "SMA", model: "Sunny Central", serialNumber: `${claim.projectId}-INV-01`, quantity: 2, capacity: `${Math.round(observedCapacity / 2)} kW each`, condition: stage === "returned" ? "Fair" : "Good", operational: true },
+      { id: `${reportId}-EQ-03`, type: "Battery bank", manufacturer: "BYD", model: "Battery-Box Premium", serialNumber: `${claim.projectId}-BAT-01`, quantity: 4, capacity: "240 kWh total", condition: "Good", operational: true },
+    ],
+    meter: {
+      available: true,
+      type: "Three-phase smart meter",
+      number: `MTR-${claim.projectId.replace(/[^A-Z0-9]/g, "").slice(-8)}`,
+      manufacturer: "Mojec",
+      condition: "Installed and sealed",
+      reading: "12,486.7 kWh",
+    },
+    transformer: {
+      available: true,
+      manufacturer: "MBH Power",
+      serialNumber: stage === "returned" ? "Not visible" : `TR-${claim.projectId.replace(/[^A-Z0-9]/g, "").slice(-8)}`,
+      ratingKva: Math.max(100, Math.ceil(approvedCapacity * 1.25)),
+      condition: stage === "returned" ? "Requires confirmation" : "Good",
+      operational: stage !== "returned",
+    },
+    infrastructure: {
+      expectedPoles: 25,
+      observedPoles: stage === "returned" ? 23 : 25,
+      damagedPoles: stage === "returned" ? 2 : 0,
+      cableType: "4-core aluminium armoured cable",
+      expectedCableLengthM: 3500,
+      installedCableLengthM: stage === "returned" ? 3260 : 3490,
+    },
+    capacity: {
+      approvedKw: approvedCapacity,
+      observedKw: observedCapacity,
+      variancePercent: approvedCapacity ? Number((((observedCapacity - approvedCapacity) / approvedCapacity) * 100).toFixed(1)) : 0,
+    },
+    beneficiaries: {
+      expected: claim.beneficiaries,
+      verified: verifiedBeneficiaries,
+      residential: Math.max(0, verifiedBeneficiaries - 72),
+      commercial: 58,
+      publicFacilities: 14,
+    },
+    observations: stage === "returned"
+      ? "The site was accessible and operational, but transformer identification, earthing evidence and installed capacity records were incomplete. Two poles showed visible damage."
+      : "The project was accessible, operational and generally aligned with the approved design. Equipment nameplates, meter details, beneficiaries and distribution infrastructure were physically verified.",
+    recommendation: claim.recommendation ?? "The installation is recommended for verification subject to closure of listed minor findings.",
+    findings,
+    evidence,
+    signatures: {
+      community: { name: stage === "verified" ? "Mrs. Nkiru Eze" : "Alhaji Musa Lawal", role: "Community Representative", phone: "+2348037005522", signedAt: submittedAt, captured: true },
+      contractor: { name: stage === "verified" ? "Emeka Nwosu" : "Abdullahi Garba", role: "Contractor Representative", phone: "+2348037004411", signedAt: submittedAt, captured: true },
+      officer: { name: officerName, role: "Field Officer", phone: "+2348035550100", signedAt: submittedAt, captured: true },
+    },
+    declarationAccepted: true,
+    consultantReview,
+    reaVerification,
+  };
+}
+
+const seededClaims: ClaimRecord[] = initialClaims.map((claim) => {
+  const stage = claim.status === "Consultant Review"
+    ? "consultant-review"
+    : claim.status === "Pending REA Review"
+      ? "pending-rea"
+      : claim.status === "Verified"
+        ? "verified"
+        : claim.status === "Re-inspection Required"
+          ? "returned"
+          : null;
+  return stage ? { ...claim, inspectionForm: buildSampleInspectionForm(claim, stage) } : claim;
+});
+
 const initialUsers: PortalUser[] = [
   { id: "USR-001", name: "Engr. Fatima Sani", email: "staff@rea.gov.ng", phone: "+2348030001001", username: "staff@rea.gov.ng", credential: "staff123", role: "REA Admin", organization: "REA", state: "FCT", status: "Active", lastActive: "2 min ago" },
   { id: "USR-002", name: "Musa Danjuma", email: "reviewer@rea.gov.ng", phone: "+2348030001002", username: "reviewer@rea.gov.ng", credential: "review123", role: "REA Reviewer", organization: "REA", state: "Kaduna", status: "Active", lastActive: "18 min ago" },
@@ -502,8 +838,8 @@ type AtlasGridContextValue = {
   signOut: () => void;
   createClaim: (contractId: string, submittedBy?: string) => ClaimRecord | null;
   validateClaim: (claimId: string) => void;
-  assignConsultant: (claimId: string, consultant: string, lead?: string) => void;
-  assignFieldOfficer: (claimId: string, officerId: string) => boolean;
+  assignConsultant: (claimId: string, consultant: string, lead?: string, dueDate?: string, instructions?: string) => void;
+  assignFieldOfficer: (claimId: string, officerId: string, instructions?: string) => boolean;
   createFieldOfficer: (input: CreateFieldOfficerInput) => ActionResult<PortalUser>;
   toggleFieldOfficerStatus: (userId: string, organization: string) => ActionResult<PortalUser>;
   verifyArrival: (claimId: string, distanceM?: number) => void;
@@ -516,11 +852,12 @@ type AtlasGridContextValue = {
   rejectClaim: (claimId: string, reason: string) => void;
   addUser: (user: Omit<PortalUser, "id" | "lastActive">) => void;
   toggleUserStatus: (userId: string) => void;
+  updateCurrentUserProfile: (input: UpdateProfileInput) => ActionResult<PortalUser>;
   resetDemo: () => void;
 };
 
 const AtlasGridContext = createContext<AtlasGridContextValue | null>(null);
-const STORAGE_KEY = "atlasgrid-demo-state-v4";
+const STORAGE_KEY = "atlasgrid-demo-state-v6";
 const SESSION_KEY = "atlasgrid-active-user-v1";
 let claimSequence = 248;
 
@@ -566,7 +903,7 @@ function nextFieldOfficerId(records: PortalUser[]) {
 }
 
 export function AtlasGridProvider({ children }: { children: ReactNode }) {
-  const [claims, setClaims] = useState<ClaimRecord[]>(initialClaims);
+  const [claims, setClaims] = useState<ClaimRecord[]>(seededClaims);
   const [users, setUsers] = useState<PortalUser[]>(initialUsers);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>(initialAudit);
   const [currentUserId, setCurrentUserId] = useState(() => {
@@ -697,9 +1034,16 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
     appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Validated claim", entityType: "Claim", entityId: claimId, details: "Contract data, coordinates and supporting records matched." });
   }, [appendAudit, currentUser, updateClaim]);
 
-  const assignConsultant = useCallback((claimId: string, consultant: string, lead = "Consultant Lead") => {
-    updateClaim(claimId, { status: "Consultant Assigned", consultant, consultantLead: lead, dueDate: "20 Aug 2026" });
-    appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Assigned consultant", entityType: "Claim", entityId: claimId, details: `Assigned to ${consultant}.` });
+  const assignConsultant = useCallback((claimId: string, consultant: string, lead = "Consultant Lead", dueDate = "20 Aug 2026", instructions = "Complete field verification, evidence capture and consultant QA before submission to REA.") => {
+    updateClaim(claimId, {
+      status: "Consultant Assigned",
+      consultant,
+      consultantLead: lead,
+      consultantAssignedAt: timestamp(),
+      assignmentInstructions: instructions,
+      dueDate,
+    });
+    appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Assigned consultant", entityType: "Claim", entityId: claimId, details: `Assigned to ${consultant}; deadline ${dueDate}. ${instructions}` });
   }, [appendAudit, currentUser, updateClaim]);
 
   const fieldOfficers = useMemo(() => users.filter((user) => user.role === "Field Officer"), [users]);
@@ -744,12 +1088,20 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
     return { ok: true, message: `${officer.name} is now ${status.toLowerCase()}.`, data: updated };
   }, [appendAudit, currentUser?.name, users]);
 
-  const assignFieldOfficer = useCallback((claimId: string, officerId: string) => {
+  const assignFieldOfficer = useCallback((claimId: string, officerId: string, instructions = "Verify site arrival, complete all mandatory form sections, capture GPS-tagged evidence and obtain required signatures.") => {
     const claim = claims.find((item) => item.id === claimId);
     const officer = users.find((user) => user.id === officerId && user.role === "Field Officer");
     if (!claim || !officer || officer.status !== "Active" || officer.organization !== claim.consultant) return false;
-    updateClaim(claimId, { status: "Field Officer Assigned", fieldOfficer: officer.name, fieldOfficerId: officer.id, arrivalVerified: false, inspectionProgress: 0 });
-    appendAudit({ actor: currentUser?.name ?? "Consultant Admin", role: "Consultant Admin", action: "Assigned field officer", entityType: "Claim", entityId: claimId, details: `Assigned to ${officer.name} (${officer.phone ?? officer.id}).` });
+    updateClaim(claimId, {
+      status: "Field Officer Assigned",
+      fieldOfficer: officer.name,
+      fieldOfficerId: officer.id,
+      fieldAssignedAt: timestamp(),
+      fieldInstructions: instructions,
+      arrivalVerified: false,
+      inspectionProgress: 0,
+    });
+    appendAudit({ actor: currentUser?.name ?? "Consultant Admin", role: "Consultant Admin", action: "Assigned field officer", entityType: "Claim", entityId: claimId, details: `Assigned to ${officer.name} (${officer.phone ?? officer.id}). ${instructions}` });
     return true;
   }, [appendAudit, claims, currentUser?.name, updateClaim, users]);
 
@@ -790,24 +1142,113 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
 
   const consultantApprove = useCallback((claimId: string) => {
     const claim = claims.find((item) => item.id === claimId);
-    updateClaim(claimId, { status: "Pending REA Review" });
-    appendAudit({ actor: claim?.consultantLead ?? "Consultant Admin", role: "Consultant Admin", action: "Approved report for REA", entityType: "Report", entityId: claimId, details: "Consultant quality assurance completed." });
-  }, [appendAudit, claims, updateClaim]);
+    const reviewerName = currentUser?.name ?? claim?.consultantLead ?? "Consultant Admin";
+    const review: ConsultantReviewRecord = {
+      reviewerName,
+      reviewerId: currentUser?.id ?? "CONS-QA",
+      reviewedAt: timestamp(),
+      decision: "Approved",
+      score: claim?.score ?? claim?.inspectionForm?.consultantReview?.score ?? 90,
+      notes: "GPS, form completeness, evidence metadata and signatures were checked. The report is recommended for final REA verification.",
+      gpsChecked: true,
+      evidenceChecked: true,
+      signaturesChecked: true,
+      formCompletenessChecked: true,
+    };
+    updateClaim(claimId, {
+      status: "Pending REA Review",
+      inspectionForm: claim?.inspectionForm
+        ? {
+            ...claim.inspectionForm,
+            consultantReview: review,
+            reaVerification: {
+              verifierName: "Unassigned REA reviewer",
+              verifierId: "PENDING",
+              verifiedAt: "Pending",
+              decision: "Pending",
+              notes: "Awaiting final REA review.",
+            },
+          }
+        : undefined,
+    });
+    appendAudit({ actor: reviewerName, role: "Consultant Admin", action: "Approved report for REA", entityType: "Report", entityId: claimId, details: "Consultant quality assurance completed after checking the full inspection form, GPS, evidence and signatures." });
+  }, [appendAudit, claims, currentUser, updateClaim]);
 
-  const returnForReinspection = useCallback((claimId: string, reason: string, actor = "Engr. Fatima Bello", role = "Consultant Admin") => {
-    updateClaim(claimId, { status: "Re-inspection Required", arrivalVerified: false, inspectionProgress: 0, recommendation: reason });
-    appendAudit({ actor, role, action: "Requested re-inspection", entityType: "Inspection", entityId: claimId, details: reason });
-  }, [appendAudit, updateClaim]);
+  const returnForReinspection = useCallback((claimId: string, reason: string, actor?: string, role?: string) => {
+    const claim = claims.find((item) => item.id === claimId);
+    const resolvedActor = actor ?? currentUser?.name ?? "Workflow Reviewer";
+    const resolvedRole = role ?? currentUser?.role ?? "Consultant Admin";
+    const fromRea = resolvedRole.startsWith("REA");
+    const inspectionForm = claim?.inspectionForm
+      ? {
+          ...claim.inspectionForm,
+          consultantReview: fromRea
+            ? claim.inspectionForm.consultantReview
+            : {
+                reviewerName: resolvedActor,
+                reviewerId: currentUser?.id ?? "CONS-QA",
+                reviewedAt: timestamp(),
+                decision: "Returned" as const,
+                score: claim.score ?? 0,
+                notes: reason,
+                gpsChecked: true,
+                evidenceChecked: true,
+                signaturesChecked: true,
+                formCompletenessChecked: true,
+              },
+          reaVerification: fromRea
+            ? {
+                verifierName: resolvedActor,
+                verifierId: currentUser?.id ?? "REA-REVIEW",
+                verifiedAt: timestamp(),
+                decision: "Returned" as const,
+                notes: reason,
+              }
+            : claim.inspectionForm.reaVerification,
+        }
+      : undefined;
+    updateClaim(claimId, { status: "Re-inspection Required", arrivalVerified: false, inspectionProgress: 0, recommendation: reason, inspectionForm });
+    appendAudit({ actor: resolvedActor, role: resolvedRole, action: "Requested re-inspection", entityType: "Inspection", entityId: claimId, details: reason });
+  }, [appendAudit, claims, currentUser, updateClaim]);
 
   const reaVerify = useCallback((claimId: string) => {
-    updateClaim(claimId, { status: "Verified" });
-    appendAudit({ actor: currentUser?.name ?? "REA Reviewer", role: currentUser?.role ?? "REA Reviewer", action: "Verified inspection report", entityType: "Report", entityId: claimId, details: "Report is now an authoritative REA verified record." });
-  }, [appendAudit, currentUser, updateClaim]);
+    const claim = claims.find((item) => item.id === claimId);
+    const verifierName = currentUser?.name ?? "REA Reviewer";
+    const verification: ReaVerificationRecord = {
+      verifierName,
+      verifierId: currentUser?.id ?? "REA-REVIEW",
+      verifiedAt: timestamp(),
+      decision: "Verified",
+      notes: "Report passed final REA checks for form completeness, consultant QA, GPS, evidence, capacity and compliance.",
+      controlledRecordNumber: `REA-CR-${claimId.replace(/\D/g, "").slice(-6)}`,
+    };
+    updateClaim(claimId, {
+      status: "Verified",
+      inspectionForm: claim?.inspectionForm ? { ...claim.inspectionForm, reaVerification: verification } : undefined,
+    });
+    appendAudit({ actor: verifierName, role: currentUser?.role ?? "REA Reviewer", action: "Verified inspection report", entityType: "Report", entityId: claimId, details: `Report is now an authoritative REA controlled record (${verification.controlledRecordNumber}).` });
+  }, [appendAudit, claims, currentUser, updateClaim]);
 
   const rejectClaim = useCallback((claimId: string, reason: string) => {
-    updateClaim(claimId, { status: "Rejected", recommendation: reason });
+    const claim = claims.find((item) => item.id === claimId);
+    updateClaim(claimId, {
+      status: "Rejected",
+      recommendation: reason,
+      inspectionForm: claim?.inspectionForm
+        ? {
+            ...claim.inspectionForm,
+            reaVerification: {
+              verifierName: currentUser?.name ?? "REA Admin",
+              verifierId: currentUser?.id ?? "REA-ADMIN",
+              verifiedAt: timestamp(),
+              decision: "Rejected",
+              notes: reason,
+            },
+          }
+        : undefined,
+    });
     appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Rejected claim", entityType: "Claim", entityId: claimId, details: reason });
-  }, [appendAudit, currentUser, updateClaim]);
+  }, [appendAudit, claims, currentUser, updateClaim]);
 
   const addUser = useCallback((user: Omit<PortalUser, "id" | "lastActive">) => {
     const record: PortalUser = { ...user, id: `USR-${String(users.filter((item) => item.id.startsWith("USR-")).length + 1).padStart(3, "0")}`, lastActive: "Never" };
@@ -823,8 +1264,22 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
     appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: status === "Active" ? "Reactivated user" : "Suspended user", entityType: "User", entityId: userId, details: `${user.name} status changed to ${status}.` });
   }, [appendAudit, currentUser, users]);
 
+  const updateCurrentUserProfile = useCallback((input: UpdateProfileInput): ActionResult<PortalUser> => {
+    if (!currentUser) return { ok: false, message: "No active user session was found." };
+    const name = input.name.trim();
+    const state = input.state.trim();
+    const phone = input.phone?.trim() ? normalizeNigerianPhone(input.phone) : currentUser.phone;
+    if (!name) return { ok: false, message: "Enter your full name." };
+    if (!state) return { ok: false, message: "Enter your primary state or duty location." };
+    if (input.phone?.trim() && !phone) return { ok: false, message: "Enter a valid Nigerian phone number." };
+    const updated: PortalUser = { ...currentUser, name, state, phone };
+    setUsers((current) => current.map((user) => user.id === currentUser.id ? updated : user));
+    appendAudit({ actor: currentUser.name, role: currentUser.role, action: "Updated profile", entityType: "User", entityId: currentUser.id, details: "Updated profile name, phone number or duty location." });
+    return { ok: true, message: "Profile updated successfully.", data: updated };
+  }, [appendAudit, currentUser]);
+
   const resetDemo = useCallback(() => {
-    setClaims(initialClaims);
+    setClaims(seededClaims);
     setUsers(initialUsers);
     setAuditEvents(initialAudit);
     setCurrentUserId("");
@@ -858,8 +1313,9 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
     rejectClaim,
     addUser,
     toggleUserStatus,
+    updateCurrentUserProfile,
     resetDemo,
-  }), [addUser, assignConsultant, assignFieldOfficer, auditEvents, claims, consultantApprove, createClaim, createFieldOfficer, currentUser, fieldOfficers, reaVerify, rejectClaim, resetDemo, returnForReinspection, signIn, signOut, startInspection, submitInspection, toggleFieldOfficerStatus, toggleUserStatus, updateInspectionProgress, users, validateClaim, verifyArrival]);
+  }), [addUser, assignConsultant, assignFieldOfficer, auditEvents, claims, consultantApprove, createClaim, createFieldOfficer, currentUser, fieldOfficers, reaVerify, rejectClaim, resetDemo, returnForReinspection, signIn, signOut, startInspection, submitInspection, toggleFieldOfficerStatus, toggleUserStatus, updateCurrentUserProfile, updateInspectionProgress, users, validateClaim, verifyArrival]);
 
   return <AtlasGridContext.Provider value={value}>{children}</AtlasGridContext.Provider>;
 }
