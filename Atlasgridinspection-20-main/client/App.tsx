@@ -2,6 +2,7 @@ import "./global.css";
 import "./rea-redesign.css";
 import "./modernized.css";
 import "./admin-unified.css";
+import "./rea-functional.css";
 
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
