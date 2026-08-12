@@ -5,4 +5,4 @@
     "directory": "dist/spa",
     "not_found_handling": "single-page-application"
   }
-}
+ }
