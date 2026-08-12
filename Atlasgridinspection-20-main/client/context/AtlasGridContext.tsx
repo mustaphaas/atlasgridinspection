@@ -891,7 +891,7 @@ export function normalizeNigerianPhone(value: string) {
 export function portalDestination(role: PortalRole) {
   if (role === "Consultant Admin") return "/consultant-admin";
   if (role === "Field Officer") return "/field-officer";
-  return "/";
+  return "/view";
 }
 
 function nextFieldOfficerId(records: PortalUser[]) {
