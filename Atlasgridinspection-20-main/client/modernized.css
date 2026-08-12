@@ -320,3 +320,115 @@ button.ag-kpi { width: 100%; cursor: pointer; }
   .ag-consultant-mobile-nav button.active { border-color: #9dc9ae; background: var(--ag-green-soft); color: var(--ag-green); }
 }
 .ag-camera-input { display: none !important; }
+
+/* Portal isolation and consultant-owned field officer accounts */
+.login-phone-note {
+  margin-top: 16px;
+  padding: 12px 13px;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border: 1px solid #cfe2d6;
+  border-radius: 10px;
+  background: #f2f8f4;
+  color: #567064;
+}
+.login-phone-note > svg { flex: 0 0 auto; margin-top: 2px; color: var(--ag-green); }
+.login-phone-note b, .login-phone-note small { display: block; }
+.login-phone-note b { color: #43584d; font-size: 11px; }
+.login-phone-note small { margin-top: 4px; color: #718179; font-size: 9.5px; line-height: 1.45; }
+
+.ag-ownership-note {
+  margin: 14px 16px 2px;
+  padding: 13px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #cfe2d6;
+  border-radius: 11px;
+  background: #f3f9f5;
+  color: #557064;
+}
+.ag-ownership-note > svg { flex: 0 0 auto; margin-top: 1px; color: var(--ag-green); }
+.ag-ownership-note b, .ag-ownership-note small { display: block; }
+.ag-ownership-note b { color: #40554a; font-size: 12.5px; }
+.ag-ownership-note small { margin-top: 3px; color: var(--ag-muted); font-size: 11px; line-height: 1.5; }
+
+.ag-officer-directory article {
+  grid-template-columns: 40px minmax(190px, 1fr) 76px 76px auto auto;
+}
+.ag-officer-directory article.is-suspended { opacity: .72; background: #fafafa; }
+.ag-officer-directory article > div:nth-child(2) small { display: flex; align-items: center; gap: 5px; }
+.ag-officer-directory article .ag-table-action { justify-self: end; }
+
+.ag-empty-assignment {
+  margin: 16px 20px 0;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px dashed #c7d9ce;
+  border-radius: 12px;
+  background: #f7faf8;
+  color: #61736a;
+}
+.ag-empty-assignment > svg { color: var(--ag-green); }
+.ag-empty-assignment b, .ag-empty-assignment p { display: block; }
+.ag-empty-assignment b { color: #43564c; font-size: 13px; }
+.ag-empty-assignment p { margin: 4px 0 0; color: var(--ag-muted); font-size: 11px; }
+
+.ag-optional { margin-left: 4px; color: #87958e; font-size: 9px; font-weight: 550; }
+.ag-phone-login-explainer {
+  min-height: 72px;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #d5e4da;
+  border-radius: 10px;
+  background: #f5faf7;
+}
+.ag-phone-login-explainer > svg { flex: 0 0 auto; color: var(--ag-green); }
+.ag-phone-login-explainer b, .ag-phone-login-explainer small { display: block; }
+.ag-phone-login-explainer b { color: #45594e; font-size: 11.5px; }
+.ag-phone-login-explainer small { margin-top: 4px; color: #718179; font-size: 10px; line-height: 1.5; }
+
+.ag-credential-card {
+  margin: 18px 20px 4px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 44px repeat(2, minmax(0, 1fr));
+  gap: 13px;
+  align-items: center;
+  border: 1px solid #bddbc8;
+  border-radius: 13px;
+  background: #eff8f2;
+}
+.ag-credential-card > span {
+  grid-row: span 2;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #d9efe1;
+  color: var(--ag-green);
+}
+.ag-credential-card small, .ag-credential-card b { display: block; }
+.ag-credential-card small { color: #718179; font-size: 10px; }
+.ag-credential-card b { margin-top: 3px; color: #3f5248; font-size: 13px; word-break: break-word; }
+
+@media (max-width: 960px) {
+  .ag-officer-directory article { grid-template-columns: 40px minmax(0, 1fr) auto auto; }
+  .ag-officer-directory article .ag-officer-metric { display: none; }
+  .ag-officer-directory article .ag-table-action { grid-column: 2 / -1; justify-self: start; }
+}
+
+@media (max-width: 620px) {
+  .ag-empty-assignment { grid-template-columns: 34px minmax(0, 1fr); }
+  .ag-empty-assignment .ag-button { grid-column: 1 / -1; width: 100%; }
+  .ag-credential-card { grid-template-columns: 42px minmax(0, 1fr); }
+  .ag-credential-card > span { grid-row: auto; }
+  .ag-credential-card > div { grid-column: 2; }
+}
