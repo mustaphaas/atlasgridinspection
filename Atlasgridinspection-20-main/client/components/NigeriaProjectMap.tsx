@@ -462,6 +462,8 @@ export default function NigeriaProjectMap({
   const [selectedProject, setSelectedProject] =
     useState<NigeriaProject | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [focusPoint, setFocusPoint] = useState({ x: viewMinX + viewWidth / 2, y: viewMinY + viewHeight / 2 });
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
     if (selectedStateProp && selectedStateProp !== "All states") {
@@ -488,10 +490,34 @@ export default function NigeriaProjectMap({
   const centerX = viewMinX + viewWidth / 2;
   const centerY = viewMinY + viewHeight / 2;
 
-  const selectState = (state: string) => {
+  const selectState = (state: string, shouldFocus = true) => {
     setSelectedState(state);
     setSelectedProject(null);
+    if (shouldFocus) {
+      const coordinates = labelCoordinates[state];
+      const stateProjects = projects.filter(
+        (project) => normalizeState(project.state) === normalizeState(state),
+      );
+      const point = coordinates
+        ? projectPoint(coordinates[0], coordinates[1])
+        : stateProjects.length
+          ? {
+              x: stateProjects.reduce((sum, project) => sum + projectPoint(project.latitude, project.longitude).x, 0) / stateProjects.length,
+              y: stateProjects.reduce((sum, project) => sum + projectPoint(project.latitude, project.longitude).y, 0) / stateProjects.length,
+            }
+          : { x: centerX, y: centerY };
+      setFocusPoint(point);
+      setZoom(compact ? 1.35 : 1.85);
+      setFocused(true);
+    }
     onStateSelect?.(state);
+  };
+
+  const resetMap = () => {
+    setZoom(1);
+    setFocusPoint({ x: centerX, y: centerY });
+    setFocused(false);
+    setSelectedProject(null);
   };
 
   const stateFill = (state: string) => {
@@ -554,7 +580,7 @@ export default function NigeriaProjectMap({
             <button
               type="button"
               aria-label="Reset zoom"
-              onClick={() => setZoom(1)}
+              onClick={resetMap}
             >
               <RotateCcw size={15} />
             </button>
@@ -580,7 +606,7 @@ export default function NigeriaProjectMap({
             preserveAspectRatio="xMidYMid meet"
           >
             <g
-              transform={`translate(${centerX} ${centerY}) scale(${zoom}) translate(${-centerX} ${-centerY})`}
+              transform={`translate(${centerX} ${centerY}) scale(${zoom}) translate(${-focusPoint.x} ${-focusPoint.y})`}
               className="ng-map-zoom-layer"
             >
               {mapLocations.length > 0 ? (
@@ -597,7 +623,7 @@ export default function NigeriaProjectMap({
                         key={location.id}
                         d={location.path}
                         fill={stateFill(state)}
-                        className={`ng-map-state ${selected ? "selected" : ""} ${hovered ? "hovered" : ""}`}
+                        className={`ng-map-state ${selected ? "selected" : ""} ${hovered ? "hovered" : ""} ${focused && !selected ? "dimmed" : ""}`}
                         onMouseEnter={() => setHoveredState(state)}
                         onMouseLeave={() => setHoveredState(null)}
                         onClick={(event) => {
@@ -646,12 +672,12 @@ export default function NigeriaProjectMap({
                   return (
                     <g
                       key={project.id}
-                      className={`ng-project-marker ${pulse ? "pulse" : ""}`}
+                      className={`ng-project-marker ${pulse ? "pulse" : ""} ${focused && normalizeState(project.state) !== normalizeState(activeState) ? "dimmed" : ""} ${focused && normalizeState(project.state) === normalizeState(activeState) ? "focused" : ""}`}
                       transform={`translate(${point.x} ${point.y})`}
                       onClick={(event) => {
                         event.stopPropagation();
+                        selectState(project.state);
                         setSelectedProject(project);
-                        setSelectedState(project.state);
                         onProjectSelect?.(project);
                       }}
                     >
@@ -675,11 +701,13 @@ export default function NigeriaProjectMap({
             </g>
           </svg>
 
-          <div className="ng-map-national-label">
-            <small>NATIONAL PROJECT COVERAGE</small>
-            <strong>Nigeria</strong>
-            <span>36 states + FCT</span>
-          </div>
+          {!compact && (
+            <div className="ng-map-national-label">
+              <small>NATIONAL PROJECT COVERAGE</small>
+              <strong>Nigeria</strong>
+              <span>36 states + FCT</span>
+            </div>
+          )}
 
           {hoveredState && hoveredMetric && (
             <div className="ng-map-tooltip" role="status">
@@ -758,6 +786,7 @@ export default function NigeriaProjectMap({
                     type="button"
                     key={project.id}
                     onClick={() => {
+                      selectState(project.state);
                       setSelectedProject(project);
                       onProjectSelect?.(project);
                     }}
