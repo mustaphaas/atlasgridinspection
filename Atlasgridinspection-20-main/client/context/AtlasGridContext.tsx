@@ -75,15 +75,37 @@ export type ClaimRecord = {
   lastUpdated: string;
 };
 
+export type PortalRole = "REA Admin" | "REA Reviewer" | "Consultant Admin" | "Field Officer" | "Auditor";
+
 export type PortalUser = {
   id: string;
   name: string;
-  email: string;
-  role: "REA Admin" | "REA Reviewer" | "Consultant Admin" | "Field Officer" | "Auditor";
+  email?: string;
+  phone?: string;
+  username: string;
+  /** Demo-only credential. Replace with server-side password/PIN hashing in production. */
+  credential: string;
+  mustChangeCredential?: boolean;
+  role: PortalRole;
   organization: string;
   state: string;
   status: "Active" | "Invited" | "Suspended";
   lastActive: string;
+};
+
+export type CreateFieldOfficerInput = {
+  name: string;
+  phone: string;
+  state: string;
+  organization: string;
+  temporaryPin: string;
+  email?: string;
+};
+
+export type ActionResult<T = undefined> = {
+  ok: boolean;
+  message: string;
+  data?: T;
 };
 
 export type AuditEvent = {
@@ -288,7 +310,7 @@ const initialClaims: ClaimRecord[] = [
     submittedBy: "REA Claims Desk",
     status: "Consultant Assigned",
     consultant: "NorthGrid Consultants",
-    consultantLead: "Engr. Fatima Sani",
+    consultantLead: "Engr. Fatima Bello",
     dueDate: "18 Aug 2026",
     priority: "High",
     arrivalVerified: false,
@@ -312,7 +334,7 @@ const initialClaims: ClaimRecord[] = [
     submittedBy: "REA Claims Desk",
     status: "Field Officer Assigned",
     consultant: "NorthGrid Consultants",
-    consultantLead: "Engr. Fatima Sani",
+    consultantLead: "Engr. Fatima Bello",
     fieldOfficer: "Amina Yusuf",
     fieldOfficerId: "FO-0198",
     dueDate: "14 Aug 2026",
@@ -338,7 +360,7 @@ const initialClaims: ClaimRecord[] = [
     submittedBy: "REA Claims Desk",
     status: "Consultant Review",
     consultant: "NorthGrid Consultants",
-    consultantLead: "Engr. Fatima Sani",
+    consultantLead: "Engr. Fatima Bello",
     fieldOfficer: "Ibrahim Abdullahi",
     fieldOfficerId: "FO-0241",
     dueDate: "12 Aug 2026",
@@ -434,7 +456,7 @@ const initialClaims: ClaimRecord[] = [
     submittedBy: "REA Claims Desk",
     status: "Re-inspection Required",
     consultant: "NorthGrid Consultants",
-    consultantLead: "Engr. Fatima Sani",
+    consultantLead: "Engr. Fatima Bello",
     fieldOfficer: "Amina Yusuf",
     fieldOfficerId: "FO-0198",
     dueDate: "16 Aug 2026",
@@ -451,12 +473,12 @@ const initialClaims: ClaimRecord[] = [
 ];
 
 const initialUsers: PortalUser[] = [
-  { id: "USR-001", name: "Engr. Fatima Sani", email: "fatima.sani@rea.gov.ng", role: "REA Admin", organization: "REA", state: "FCT", status: "Active", lastActive: "2 min ago" },
-  { id: "USR-002", name: "Musa Danjuma", email: "musa.danjuma@rea.gov.ng", role: "REA Reviewer", organization: "REA", state: "Kaduna", status: "Active", lastActive: "18 min ago" },
-  { id: "USR-003", name: "Engr. Fatima Bello", email: "fatima.bello@northgrid.ng", role: "Consultant Admin", organization: "NorthGrid Consultants", state: "Kano", status: "Active", lastActive: "12 min ago" },
-  { id: "USR-004", name: "Amina Yusuf", email: "amina.yusuf@northgrid.ng", role: "Field Officer", organization: "NorthGrid Consultants", state: "Kano", status: "Active", lastActive: "6 min ago" },
-  { id: "USR-005", name: "Ibrahim Abdullahi", email: "ibrahim.abdullahi@northgrid.ng", role: "Field Officer", organization: "NorthGrid Consultants", state: "Kano", status: "Active", lastActive: "24 min ago" },
-  { id: "USR-006", name: "Ngozi Okafor", email: "ngozi.okafor@audit.gov.ng", role: "Auditor", organization: "REA Internal Audit", state: "FCT", status: "Invited", lastActive: "Never" },
+  { id: "USR-001", name: "Engr. Fatima Sani", email: "staff@rea.gov.ng", phone: "+2348030001001", username: "staff@rea.gov.ng", credential: "staff123", role: "REA Admin", organization: "REA", state: "FCT", status: "Active", lastActive: "2 min ago" },
+  { id: "USR-002", name: "Musa Danjuma", email: "reviewer@rea.gov.ng", phone: "+2348030001002", username: "reviewer@rea.gov.ng", credential: "review123", role: "REA Reviewer", organization: "REA", state: "Kaduna", status: "Active", lastActive: "18 min ago" },
+  { id: "USR-003", name: "Engr. Fatima Bello", email: "admin@northgrid.ng", phone: "+2348030002001", username: "admin@northgrid.ng", credential: "admin123", role: "Consultant Admin", organization: "NorthGrid Consultants", state: "Kano", status: "Active", lastActive: "12 min ago" },
+  { id: "FO-0198", name: "Amina Yusuf", email: "amina.yusuf@northgrid.ng", phone: "+2348035550198", username: "+2348035550198", credential: "field123", role: "Field Officer", organization: "NorthGrid Consultants", state: "Kano", status: "Active", lastActive: "6 min ago" },
+  { id: "FO-0241", name: "Ibrahim Abdullahi", phone: "+2348035550241", username: "+2348035550241", credential: "field241", role: "Field Officer", organization: "NorthGrid Consultants", state: "Kano", status: "Active", lastActive: "24 min ago" },
+  { id: "USR-006", name: "Ngozi Okafor", email: "ngozi.okafor@audit.gov.ng", phone: "+2348030003001", username: "ngozi.okafor@audit.gov.ng", credential: "audit123", role: "Auditor", organization: "REA Internal Audit", state: "FCT", status: "Invited", lastActive: "Never" },
 ];
 
 const initialAudit: AuditEvent[] = [
@@ -472,13 +494,18 @@ type AtlasGridContextValue = {
   contracts: ContractRecord[];
   claims: ClaimRecord[];
   users: PortalUser[];
+  currentUser: PortalUser | null;
   auditEvents: AuditEvent[];
   consultants: string[];
   fieldOfficers: PortalUser[];
+  signIn: (identifier: string, credential: string) => ActionResult<{ destination: string; user: PortalUser }>;
+  signOut: () => void;
   createClaim: (contractId: string, submittedBy?: string) => ClaimRecord | null;
   validateClaim: (claimId: string) => void;
   assignConsultant: (claimId: string, consultant: string, lead?: string) => void;
-  assignFieldOfficer: (claimId: string, officerName: string) => void;
+  assignFieldOfficer: (claimId: string, officerId: string) => boolean;
+  createFieldOfficer: (input: CreateFieldOfficerInput) => ActionResult<PortalUser>;
+  toggleFieldOfficerStatus: (userId: string, organization: string) => ActionResult<PortalUser>;
   verifyArrival: (claimId: string, distanceM?: number) => void;
   startInspection: (claimId: string) => boolean;
   updateInspectionProgress: (claimId: string, progress: number) => void;
@@ -493,7 +520,8 @@ type AtlasGridContextValue = {
 };
 
 const AtlasGridContext = createContext<AtlasGridContextValue | null>(null);
-const STORAGE_KEY = "atlasgrid-demo-state-v3";
+const STORAGE_KEY = "atlasgrid-demo-state-v4";
+const SESSION_KEY = "atlasgrid-active-user-v1";
 let claimSequence = 248;
 
 function nextClaimId(records: ClaimRecord[]) {
@@ -515,12 +543,38 @@ function timestamp() {
   }).format(new Date());
 }
 
+export function normalizeNigerianPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.startsWith("234") && digits.length === 13) return `+${digits}`;
+  if (digits.startsWith("0") && digits.length === 11) return `+234${digits.slice(1)}`;
+  if (digits.length === 10) return `+234${digits}`;
+  return "";
+}
+
+export function portalDestination(role: PortalRole) {
+  if (role === "Consultant Admin") return "/consultant-admin";
+  if (role === "Field Officer") return "/field-officer";
+  return "/";
+}
+
+function nextFieldOfficerId(records: PortalUser[]) {
+  const largest = records.reduce((maximum, user) => {
+    const numeric = user.role === "Field Officer" ? Number(user.id.match(/(\d+)$/)?.[1] ?? 0) : 0;
+    return Math.max(maximum, numeric);
+  }, 0);
+  return `FO-${String(Math.max(100, largest + 1)).padStart(4, "0")}`;
+}
+
 export function AtlasGridProvider({ children }: { children: ReactNode }) {
   const [claims, setClaims] = useState<ClaimRecord[]>(initialClaims);
   const [users, setUsers] = useState<PortalUser[]>(initialUsers);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>(initialAudit);
+  const [currentUserId, setCurrentUserId] = useState(() => {
+    try { return window.localStorage.getItem(SESSION_KEY) ?? ""; } catch { return ""; }
+  });
   const [hydrated, setHydrated] = useState(false);
   const synchronizingFromStorage = useRef(false);
+  const currentUser = useMemo(() => users.find((user) => user.id === currentUserId && user.status === "Active") ?? null, [currentUserId, users]);
 
   useEffect(() => {
     try {
@@ -579,6 +633,32 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
     ]);
   }, []);
 
+  const signIn = useCallback((identifier: string, credential: string): ActionResult<{ destination: string; user: PortalUser }> => {
+    const rawIdentifier = identifier.trim();
+    const phoneIdentifier = normalizeNigerianPhone(rawIdentifier);
+    const emailIdentifier = rawIdentifier.toLowerCase();
+    const user = users.find((item) => {
+      const username = item.username.toLowerCase();
+      const email = item.email?.toLowerCase();
+      return username === emailIdentifier || email === emailIdentifier || (!!phoneIdentifier && (item.phone === phoneIdentifier || item.username === phoneIdentifier));
+    });
+
+    if (!user || user.credential !== credential) return { ok: false, message: "The username or password/PIN is incorrect." };
+    if (user.status !== "Active") return { ok: false, message: user.status === "Suspended" ? "This account is suspended. Contact your administrator." : "This account has not been activated yet." };
+
+    setCurrentUserId(user.id);
+    setUsers((current) => current.map((item) => item.id === user.id ? { ...item, lastActive: "Just now" } : item));
+    try { window.localStorage.setItem(SESSION_KEY, user.id); } catch { /* keep the current tab signed in */ }
+    appendAudit({ actor: user.name, role: user.role, action: "Signed in", entityType: "System", entityId: user.id, details: `Authenticated to the ${user.role} workspace.` });
+    return { ok: true, message: "Signed in successfully.", data: { destination: portalDestination(user.role), user } };
+  }, [appendAudit, users]);
+
+  const signOut = useCallback(() => {
+    if (currentUser) appendAudit({ actor: currentUser.name, role: currentUser.role, action: "Signed out", entityType: "System", entityId: currentUser.id, details: "Ended the active portal session." });
+    setCurrentUserId("");
+    try { window.localStorage.removeItem(SESSION_KEY); } catch { /* no-op */ }
+  }, [appendAudit, currentUser]);
+
   const updateClaim = useCallback((claimId: string, updates: Partial<ClaimRecord>) => {
     setClaims((current) => current.map((claim) => claim.id === claimId ? { ...claim, ...updates, lastUpdated: "Just now" } : claim));
   }, []);
@@ -614,26 +694,70 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
 
   const validateClaim = useCallback((claimId: string) => {
     updateClaim(claimId, { status: "Validated" });
-    appendAudit({ actor: "Engr. Fatima Sani", role: "REA Admin", action: "Validated claim", entityType: "Claim", entityId: claimId, details: "Contract data, coordinates and supporting records matched." });
-  }, [appendAudit, updateClaim]);
+    appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Validated claim", entityType: "Claim", entityId: claimId, details: "Contract data, coordinates and supporting records matched." });
+  }, [appendAudit, currentUser, updateClaim]);
 
   const assignConsultant = useCallback((claimId: string, consultant: string, lead = "Consultant Lead") => {
     updateClaim(claimId, { status: "Consultant Assigned", consultant, consultantLead: lead, dueDate: "20 Aug 2026" });
-    appendAudit({ actor: "Engr. Fatima Sani", role: "REA Admin", action: "Assigned consultant", entityType: "Claim", entityId: claimId, details: `Assigned to ${consultant}.` });
-  }, [appendAudit, updateClaim]);
+    appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Assigned consultant", entityType: "Claim", entityId: claimId, details: `Assigned to ${consultant}.` });
+  }, [appendAudit, currentUser, updateClaim]);
 
-  const fieldOfficers = useMemo(() => users.filter((user) => user.role === "Field Officer" && user.status === "Active"), [users]);
+  const fieldOfficers = useMemo(() => users.filter((user) => user.role === "Field Officer"), [users]);
 
-  const assignFieldOfficer = useCallback((claimId: string, officerName: string) => {
-    const officer = users.find((user) => user.name === officerName && user.role === "Field Officer");
-    updateClaim(claimId, { status: "Field Officer Assigned", fieldOfficer: officerName, fieldOfficerId: officer?.id, arrivalVerified: false, inspectionProgress: 0 });
-    appendAudit({ actor: "Engr. Fatima Bello", role: "Consultant Admin", action: "Assigned field officer", entityType: "Claim", entityId: claimId, details: `Assigned to ${officerName}.` });
-  }, [appendAudit, updateClaim, users]);
+  const createFieldOfficer = useCallback((input: CreateFieldOfficerInput): ActionResult<PortalUser> => {
+    const name = input.name.trim();
+    const phone = normalizeNigerianPhone(input.phone);
+    const email = input.email?.trim().toLowerCase() || undefined;
+    const pin = input.temporaryPin.trim();
+    if (!name) return { ok: false, message: "Enter the field officer's full name." };
+    if (!phone) return { ok: false, message: "Enter a valid Nigerian phone number, for example 0803 555 0198." };
+    if (!/^\d{6}$/.test(pin)) return { ok: false, message: "Use a six-digit temporary PIN." };
+    if (users.some((user) => user.username === phone || user.phone === phone)) return { ok: false, message: "That phone number is already registered." };
+    if (email && users.some((user) => user.email?.toLowerCase() === email)) return { ok: false, message: "That email address is already registered." };
+
+    const record: PortalUser = {
+      id: nextFieldOfficerId(users),
+      name,
+      phone,
+      username: phone,
+      credential: pin,
+      mustChangeCredential: true,
+      email,
+      role: "Field Officer",
+      organization: input.organization,
+      state: input.state.trim() || "Unassigned",
+      status: "Active",
+      lastActive: "Never",
+    };
+    setUsers((current) => [record, ...current]);
+    appendAudit({ actor: currentUser?.name ?? "Consultant Admin", role: "Consultant Admin", action: "Created field officer account", entityType: "User", entityId: record.id, details: `${record.name} created for ${record.organization}; phone number is the login username.` });
+    return { ok: true, message: "Field officer account created.", data: record };
+  }, [appendAudit, currentUser?.name, users]);
+
+  const toggleFieldOfficerStatus = useCallback((userId: string, organization: string): ActionResult<PortalUser> => {
+    const officer = users.find((user) => user.id === userId && user.role === "Field Officer");
+    if (!officer || officer.organization !== organization) return { ok: false, message: "You can only manage field officers in your consultant organization." };
+    const status: PortalUser["status"] = officer.status === "Suspended" ? "Active" : "Suspended";
+    const updated = { ...officer, status };
+    setUsers((current) => current.map((user) => user.id === userId ? updated : user));
+    appendAudit({ actor: currentUser?.name ?? "Consultant Admin", role: "Consultant Admin", action: status === "Active" ? "Reactivated field officer" : "Suspended field officer", entityType: "User", entityId: officer.id, details: `${officer.name} is now ${status.toLowerCase()}.` });
+    return { ok: true, message: `${officer.name} is now ${status.toLowerCase()}.`, data: updated };
+  }, [appendAudit, currentUser?.name, users]);
+
+  const assignFieldOfficer = useCallback((claimId: string, officerId: string) => {
+    const claim = claims.find((item) => item.id === claimId);
+    const officer = users.find((user) => user.id === officerId && user.role === "Field Officer");
+    if (!claim || !officer || officer.status !== "Active" || officer.organization !== claim.consultant) return false;
+    updateClaim(claimId, { status: "Field Officer Assigned", fieldOfficer: officer.name, fieldOfficerId: officer.id, arrivalVerified: false, inspectionProgress: 0 });
+    appendAudit({ actor: currentUser?.name ?? "Consultant Admin", role: "Consultant Admin", action: "Assigned field officer", entityType: "Claim", entityId: claimId, details: `Assigned to ${officer.name} (${officer.phone ?? officer.id}).` });
+    return true;
+  }, [appendAudit, claims, currentUser?.name, updateClaim, users]);
 
   const verifyArrival = useCallback((claimId: string, distanceM = 28) => {
+    const claim = claims.find((item) => item.id === claimId);
     updateClaim(claimId, { status: "Arrival Verified", arrivalVerified: true, arrivalDistanceM: distanceM });
-    appendAudit({ actor: "Amina Yusuf", role: "Field Officer", action: "Verified site arrival", entityType: "Inspection", entityId: claimId, details: `GPS matched the approved geofence at ${distanceM} metres.` });
-  }, [appendAudit, updateClaim]);
+    appendAudit({ actor: currentUser?.name ?? claim?.fieldOfficer ?? "Field Officer", role: "Field Officer", action: "Verified site arrival", entityType: "Inspection", entityId: claimId, details: `GPS matched the approved geofence at ${distanceM} metres.` });
+  }, [appendAudit, claims, currentUser?.name, updateClaim]);
 
   const startInspection = useCallback((claimId: string) => {
     const claim = claims.find((item) => item.id === claimId);
@@ -677,46 +801,53 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
 
   const reaVerify = useCallback((claimId: string) => {
     updateClaim(claimId, { status: "Verified" });
-    appendAudit({ actor: "Musa Danjuma", role: "REA Reviewer", action: "Verified inspection report", entityType: "Report", entityId: claimId, details: "Report is now an authoritative REA verified record." });
-  }, [appendAudit, updateClaim]);
+    appendAudit({ actor: currentUser?.name ?? "REA Reviewer", role: currentUser?.role ?? "REA Reviewer", action: "Verified inspection report", entityType: "Report", entityId: claimId, details: "Report is now an authoritative REA verified record." });
+  }, [appendAudit, currentUser, updateClaim]);
 
   const rejectClaim = useCallback((claimId: string, reason: string) => {
     updateClaim(claimId, { status: "Rejected", recommendation: reason });
-    appendAudit({ actor: "Engr. Fatima Sani", role: "REA Admin", action: "Rejected claim", entityType: "Claim", entityId: claimId, details: reason });
-  }, [appendAudit, updateClaim]);
+    appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Rejected claim", entityType: "Claim", entityId: claimId, details: reason });
+  }, [appendAudit, currentUser, updateClaim]);
 
   const addUser = useCallback((user: Omit<PortalUser, "id" | "lastActive">) => {
-    const record: PortalUser = { ...user, id: `USR-${String(users.length + 1).padStart(3, "0")}`, lastActive: "Never" };
+    const record: PortalUser = { ...user, id: `USR-${String(users.filter((item) => item.id.startsWith("USR-")).length + 1).padStart(3, "0")}`, lastActive: "Never" };
     setUsers((current) => [record, ...current]);
-    appendAudit({ actor: "Engr. Fatima Sani", role: "REA Admin", action: "Created user", entityType: "User", entityId: record.id, details: `${record.name} added as ${record.role}.` });
-  }, [appendAudit, users.length]);
+    appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: "Created user", entityType: "User", entityId: record.id, details: `${record.name} added as ${record.role}.` });
+  }, [appendAudit, currentUser, users]);
 
   const toggleUserStatus = useCallback((userId: string) => {
     const user = users.find((item) => item.id === userId);
     if (!user) return;
     const status = user.status === "Suspended" ? "Active" : "Suspended";
     setUsers((current) => current.map((item) => item.id === userId ? { ...item, status } : item));
-    appendAudit({ actor: "Engr. Fatima Sani", role: "REA Admin", action: status === "Active" ? "Reactivated user" : "Suspended user", entityType: "User", entityId: userId, details: `${user.name} status changed to ${status}.` });
-  }, [appendAudit, users]);
+    appendAudit({ actor: currentUser?.name ?? "REA Admin", role: currentUser?.role ?? "REA Admin", action: status === "Active" ? "Reactivated user" : "Suspended user", entityType: "User", entityId: userId, details: `${user.name} status changed to ${status}.` });
+  }, [appendAudit, currentUser, users]);
 
   const resetDemo = useCallback(() => {
     setClaims(initialClaims);
     setUsers(initialUsers);
     setAuditEvents(initialAudit);
+    setCurrentUserId("");
     window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(SESSION_KEY);
   }, []);
 
   const value = useMemo<AtlasGridContextValue>(() => ({
     contracts,
     claims,
     users,
+    currentUser,
     auditEvents,
     consultants: ["NorthGrid Consultants", "GridSure Advisory", "Capital Verification Partners", "SouthWest Grid Audit", "Eastern Energy Review"],
     fieldOfficers,
+    signIn,
+    signOut,
     createClaim,
     validateClaim,
     assignConsultant,
     assignFieldOfficer,
+    createFieldOfficer,
+    toggleFieldOfficerStatus,
     verifyArrival,
     startInspection,
     updateInspectionProgress,
@@ -728,7 +859,7 @@ export function AtlasGridProvider({ children }: { children: ReactNode }) {
     addUser,
     toggleUserStatus,
     resetDemo,
-  }), [addUser, assignConsultant, assignFieldOfficer, auditEvents, claims, consultantApprove, createClaim, fieldOfficers, reaVerify, rejectClaim, resetDemo, returnForReinspection, startInspection, submitInspection, toggleUserStatus, updateInspectionProgress, users, validateClaim, verifyArrival]);
+  }), [addUser, assignConsultant, assignFieldOfficer, auditEvents, claims, consultantApprove, createClaim, createFieldOfficer, currentUser, fieldOfficers, reaVerify, rejectClaim, resetDemo, returnForReinspection, signIn, signOut, startInspection, submitInspection, toggleFieldOfficerStatus, toggleUserStatus, updateInspectionProgress, users, validateClaim, verifyArrival]);
 
   return <AtlasGridContext.Provider value={value}>{children}</AtlasGridContext.Provider>;
 }
