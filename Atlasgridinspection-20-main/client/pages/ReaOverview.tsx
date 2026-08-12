@@ -28,17 +28,38 @@ import { useAtlasGrid } from "@/context/AtlasGridContext";
 
 type Destination = "Claims" | "Project map" | "Verified reports" | "Contractors" | "Analytics" | "Audit trail" | "Users";
 
-type ReaOverviewProps = { onNavigate?: (page: Destination) => void };
+type ReaOverviewProps = { onNavigate?: (page: Destination, extra?: { state?: string; project?: string }) => void };
 
-const trendData = [
-  { date: "01 May", completed: 38, submitted: 31, approved: 24, verified: 18 },
-  { date: "06 May", completed: 49, submitted: 40, approved: 32, verified: 23 },
-  { date: "11 May", completed: 44, submitted: 42, approved: 35, verified: 28 },
-  { date: "16 May", completed: 63, submitted: 52, approved: 43, verified: 33 },
-  { date: "21 May", completed: 72, submitted: 61, approved: 50, verified: 41 },
-  { date: "26 May", completed: 84, submitted: 70, approved: 59, verified: 47 },
-  { date: "31 May", completed: 92, submitted: 78, approved: 65, verified: 52 },
-];
+type OverviewPeriod = "30 Days" | "90 Days" | "12 Months";
+
+const trendData: Record<OverviewPeriod, { date: string; completed: number; submitted: number; approved: number; verified: number }[]> = {
+  "30 Days": [
+    { date: "01 May", completed: 38, submitted: 31, approved: 24, verified: 18 },
+    { date: "06 May", completed: 49, submitted: 40, approved: 32, verified: 23 },
+    { date: "11 May", completed: 44, submitted: 42, approved: 35, verified: 28 },
+    { date: "16 May", completed: 63, submitted: 52, approved: 43, verified: 33 },
+    { date: "21 May", completed: 72, submitted: 61, approved: 50, verified: 41 },
+    { date: "26 May", completed: 84, submitted: 70, approved: 59, verified: 47 },
+    { date: "31 May", completed: 92, submitted: 78, approved: 65, verified: 52 },
+  ],
+  "90 Days": [
+    { date: "Mar W1", completed: 62, submitted: 50, approved: 39, verified: 31 },
+    { date: "Mar W3", completed: 78, submitted: 64, approved: 53, verified: 39 },
+    { date: "Apr W1", completed: 91, submitted: 75, approved: 61, verified: 45 },
+    { date: "Apr W3", completed: 87, submitted: 78, approved: 66, verified: 51 },
+    { date: "May W1", completed: 98, submitted: 84, approved: 72, verified: 55 },
+    { date: "May W3", completed: 112, submitted: 96, approved: 82, verified: 64 },
+  ],
+  "12 Months": [
+    { date: "Jun", completed: 210, submitted: 176, approved: 151, verified: 121 },
+    { date: "Aug", completed: 246, submitted: 205, approved: 176, verified: 142 },
+    { date: "Oct", completed: 278, submitted: 231, approved: 198, verified: 165 },
+    { date: "Dec", completed: 314, submitted: 266, approved: 228, verified: 189 },
+    { date: "Feb", completed: 361, submitted: 307, approved: 267, verified: 218 },
+    { date: "Apr", completed: 409, submitted: 352, approved: 301, verified: 249 },
+    { date: "May", completed: 447, submitted: 382, approved: 334, verified: 281 },
+  ],
+};
 
 const contractors = [
   { name: "ABC Energy Ltd", projects: 42, compliance: 92, issues: 3 },
@@ -66,7 +87,7 @@ const pipelineLabels = [
 
 export default function ReaOverview({ onNavigate }: ReaOverviewProps) {
   const { claims } = useAtlasGrid();
-  const [period, setPeriod] = useState("30 Days");
+  const [period, setPeriod] = useState<OverviewPeriod>("30 Days");
 
   const workflow = useMemo(() => ({
     newClaims: claims.filter((claim) => claim.status === "New" || claim.status === "Validated").length,
@@ -136,7 +157,7 @@ export default function ReaOverview({ onNavigate }: ReaOverviewProps) {
 
       <div className="ag-overview-grid ag-map-section">
         <Panel title="Project Coverage & Risk" subtitle="Click a state to focus the map and reveal projects around it" action={<TextLink onClick={() => onNavigate?.("Project map")}>Open full map</TextLink>} className="ag-overview-map-panel">
-          <NigeriaProjectMap compact showLegend={false} showSidePanel={false} onStateSelect={() => onNavigate?.("Project map")} onProjectSelect={() => onNavigate?.("Project map")} />
+          <NigeriaProjectMap compact showLegend={false} showSidePanel={false} onStateSelect={(state) => onNavigate?.("Project map", { state })} onProjectSelect={(project) => onNavigate?.("Project map", { state: project.state, project: project.id })} />
         </Panel>
 
         <Panel title="Geographic Risk Summary" subtitle="States requiring programme attention" action={<MapPinned size={18} />}>
@@ -147,14 +168,14 @@ export default function ReaOverview({ onNavigate }: ReaOverviewProps) {
               ["Bauchi", "5 high-risk projects", 5, "High priority"],
               ["Niger", "4 pending verification", 4, "Pending"],
               ["Gombe", "3 re-inspections required", 3, "Re-inspection Required"],
-            ].map(([state, detail, value, status]) => <button key={String(state)} onClick={() => onNavigate?.("Project map")}><span>{state}</span><b>{value}</b><small>{detail}</small><StatusBadge status={String(status)} /></button>)}
+            ].map(([state, detail, value, status]) => <button key={String(state)} onClick={() => onNavigate?.("Project map", { state: String(state) })}><span>{state}</span><b>{value}</b><small>{detail}</small><StatusBadge status={String(status)} /></button>)}
           </div>
         </Panel>
       </div>
 
       <div className="ag-overview-grid ag-overview-grid-bottom">
-        <Panel title="Inspections Over Time" subtitle="Completed, submitted, approved and verified" action={<div className="ag-segmented">{["30 Days", "90 Days", "12 Months"].map((item) => <button key={item} className={period === item ? "active" : ""} onClick={() => setPeriod(item)}>{item}</button>)}</div>}>
-          <div className="ag-overview-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trendData} margin={{ top: 14, right: 16, left: -18, bottom: 0 }}><defs><linearGradient id="verifiedFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2f8f62" stopOpacity={0.28} /><stop offset="100%" stopColor="#2f8f62" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid stroke="#e7eee9" strokeDasharray="4 6" vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: "#78857e", fontSize: 12 }} /><YAxis tickLine={false} axisLine={false} tick={{ fill: "#78857e", fontSize: 12 }} /><Tooltip /><Area type="monotone" dataKey="completed" stroke="#9db8aa" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="submitted" stroke="#65a682" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="approved" stroke="#3d8161" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="verified" stroke="#176f45" fill="url(#verifiedFill)" strokeWidth={3} /></AreaChart></ResponsiveContainer></div>
+        <Panel title="Inspections Over Time" subtitle="Completed, submitted, approved and verified" action={<div className="ag-segmented">{["30 Days", "90 Days", "12 Months"].map((item) => <button key={item} className={period === item ? "active" : ""} onClick={() => setPeriod(item as OverviewPeriod)}>{item}</button>)}</div>}>
+          <div className="ag-overview-chart"><ResponsiveContainer width="100%" height="100%"><AreaChart data={trendData[period]} margin={{ top: 14, right: 16, left: -18, bottom: 0 }}><defs><linearGradient id="verifiedFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2f8f62" stopOpacity={0.28} /><stop offset="100%" stopColor="#2f8f62" stopOpacity={0.02} /></linearGradient></defs><CartesianGrid stroke="#e7eee9" strokeDasharray="4 6" vertical={false} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: "#78857e", fontSize: 12 }} /><YAxis tickLine={false} axisLine={false} tick={{ fill: "#78857e", fontSize: 12 }} /><Tooltip /><Area type="monotone" dataKey="completed" stroke="#9db8aa" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="submitted" stroke="#65a682" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="approved" stroke="#3d8161" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="verified" stroke="#176f45" fill="url(#verifiedFill)" strokeWidth={3} /></AreaChart></ResponsiveContainer></div>
         </Panel>
 
         <Panel title="Compliance Overview" subtitle="Distribution across verified projects" action={<TextLink onClick={() => onNavigate?.("Analytics")}>Full report</TextLink>}>

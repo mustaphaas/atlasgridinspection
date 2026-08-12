@@ -17,6 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { KpiCard, Modal, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
+import InspectionReportView from "@/components/InspectionReportView";
 import { useAtlasGrid, type ClaimRecord } from "@/context/AtlasGridContext";
 
 type ConsultantView = "Dashboard" | "Assignments" | "Field Officers" | "Review Queue" | "Submitted to REA";
@@ -63,7 +64,12 @@ export default function ConsultantAdmin() {
 
   const [view, setView] = useState<ConsultantView>("Dashboard");
   const [selected, setSelected] = useState<ClaimRecord | null>(null);
+  const [submittedRecord, setSubmittedRecord] = useState<ClaimRecord | null>(null);
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [assignmentStatus, setAssignmentStatus] = useState("All statuses");
+  const [showReturnReason, setShowReturnReason] = useState(false);
   const [officerId, setOfficerId] = useState(activeFieldOfficers[0]?.id ?? "");
+  const [fieldInstructions, setFieldInstructions] = useState("Verify site arrival, complete all mandatory form sections, capture GPS-tagged evidence and obtain required signatures.");
   const [returnReason, setReturnReason] = useState("Additional evidence and clearer equipment serial photographs are required.");
   const [notice, setNotice] = useState("");
   const [showCreateOfficer, setShowCreateOfficer] = useState(false);
@@ -75,6 +81,16 @@ export default function ConsultantAdmin() {
   const inField = portfolio.filter((claim) => ["Field Officer Assigned", "Arrival Verified", "Inspection In Progress"].includes(claim.status));
   const reviewQueue = portfolio.filter((claim) => claim.status === "Consultant Review");
   const sentToRea = portfolio.filter((claim) => claim.status === "Pending REA Review" || claim.status === "Verified");
+  const assignmentRecords = useMemo(() => portfolio.filter((claim) => {
+    if (["Pending REA Review", "Verified"].includes(claim.status)) return false;
+    const query = assignmentSearch.trim().toLowerCase();
+    const matchesSearch = !query || `${claim.id} ${claim.project} ${claim.state} ${claim.lga} ${claim.fieldOfficer ?? ""}`.toLowerCase().includes(query);
+    const matchesStatus = assignmentStatus === "All statuses"
+      || (assignmentStatus === "Unassigned" && (claim.status === "Consultant Assigned" || claim.status === "Re-inspection Required"))
+      || (assignmentStatus === "In progress" && ["Field Officer Assigned", "Arrival Verified", "Inspection In Progress"].includes(claim.status))
+      || claim.status === assignmentStatus;
+    return matchesSearch && matchesStatus;
+  }), [assignmentSearch, assignmentStatus, portfolio]);
 
   useEffect(() => {
     if (!activeFieldOfficers.some((officer) => officer.id === officerId)) setOfficerId(activeFieldOfficers[0]?.id ?? "");
@@ -117,13 +133,19 @@ export default function ConsultantAdmin() {
     }
   };
 
+  const openFieldAssignment = (claim: ClaimRecord) => {
+    setSelected(claim);
+    setOfficerId(claim.fieldOfficerId && activeFieldOfficers.some((officer) => officer.id === claim.fieldOfficerId) ? claim.fieldOfficerId : activeFieldOfficers[0]?.id ?? "");
+    setFieldInstructions(claim.fieldInstructions ?? "Verify site arrival, complete all mandatory form sections, capture GPS-tagged evidence and obtain required signatures.");
+  };
+
   const assign = () => {
     if (!selected || !officerId) {
       setNotice("Create or activate a field officer before assigning this inspection.");
       return;
     }
     const officer = activeFieldOfficers.find((item) => item.id === officerId);
-    const ok = assignFieldOfficer(selected.id, officerId);
+    const ok = assignFieldOfficer(selected.id, officerId, fieldInstructions);
     if (!ok || !officer) {
       setNotice("The selected officer is not active or does not belong to this consultant organization.");
       return;
@@ -135,6 +157,8 @@ export default function ConsultantAdmin() {
   const approve = (claim: ClaimRecord) => {
     consultantApprove(claim.id);
     setNotice(`${claim.id} approved and sent to the REA verification queue.`);
+    setSelected(null);
+    setShowReturnReason(false);
   };
 
   const returnReport = () => {
@@ -142,18 +166,19 @@ export default function ConsultantAdmin() {
     returnForReinspection(selected.id, returnReason, consultantName, "Consultant Admin");
     setNotice(`${selected.id} returned for re-inspection.`);
     setSelected(null);
+    setShowReturnReason(false);
   };
 
   const renderAssignments = () => (
     <Panel
       title="REA-assigned claims"
       subtitle="Assign your organization’s active field officers and monitor inspections"
-      action={<div className="ag-inline-filters"><label><Search size={15} /><input placeholder="Search assignment" /></label><select><option>All statuses</option><option>Unassigned</option><option>In progress</option></select></div>}
+      action={<div className="ag-inline-filters"><label><Search size={15} /><input value={assignmentSearch} onChange={(event) => setAssignmentSearch(event.target.value)} placeholder="Search assignment" /></label><select value={assignmentStatus} onChange={(event) => setAssignmentStatus(event.target.value)}><option>All statuses</option><option>Unassigned</option><option>In progress</option><option>Consultant Review</option><option>Re-inspection Required</option></select></div>}
     >
       <div className="ag-table-scroll">
         <table className="ag-table">
           <thead><tr><th>Claim / Project</th><th>Location</th><th>Priority</th><th>Field Officer</th><th>Status</th><th>Due Date</th><th>Action</th></tr></thead>
-          <tbody>{portfolio.filter((claim) => !["Pending REA Review", "Verified"].includes(claim.status)).map((claim) => (
+          <tbody>{assignmentRecords.map((claim) => (
             <tr key={claim.id}>
               <td><b>{claim.project}</b><small>{claim.id}</small></td>
               <td><b>{claim.state}</b><small>{claim.lga} · {claim.community}</small></td>
@@ -161,11 +186,12 @@ export default function ConsultantAdmin() {
               <td>{claim.fieldOfficer ?? <span className="ag-muted">Not assigned</span>}</td>
               <td><StatusBadge status={claim.status} /></td>
               <td>{claim.dueDate ?? "20 Aug 2026"}</td>
-              <td><button className="ag-table-action" onClick={() => setSelected(claim)}>{claim.fieldOfficer ? "Reassign" : "Assign officer"}</button></td>
+              <td><button className="ag-table-action" onClick={() => openFieldAssignment(claim)}>{claim.fieldOfficer ? "Reassign" : "Assign officer"}</button></td>
             </tr>
           ))}</tbody>
         </table>
       </div>
+      {!assignmentRecords.length && <div className="ag-submitted-state"><Search size={23} /><div><b>No assignments match the current filters</b><p>Clear the search or choose another status.</p></div><button className="ag-button ag-button-outline" onClick={() => { setAssignmentSearch(""); setAssignmentStatus("All statuses"); }}>Clear filters</button></div>}
     </Panel>
   );
 
@@ -180,7 +206,7 @@ export default function ConsultantAdmin() {
               <p>{claim.recommendation ?? "Review the submitted form, GPS evidence, photographs and signatures."}</p>
               <div><StatusBadge status={`${claim.findings ?? 0} findings`} />{(claim.criticalFindings ?? 0) > 0 && <StatusBadge status={`${claim.criticalFindings} critical`} />}</div>
             </div>
-            <div className="ag-review-actions"><button className="ag-button ag-button-outline" onClick={() => setSelected(claim)}>Return</button><button className="ag-button ag-button-primary" onClick={() => approve(claim)}><CheckCircle2 size={16} /> Approve for REA</button></div>
+            <div className="ag-review-actions"><button className="ag-button ag-button-primary" onClick={() => { setSelected(claim); setShowReturnReason(false); }}><FileCheck2 size={16} /> Review full form</button></div>
           </article>
         )) : <div className="ag-submitted-state"><CheckCircle2 size={24} /><div><b>Review queue is clear</b><p>New field submissions will appear here automatically.</p></div></div>}
       </div>
@@ -214,7 +240,7 @@ export default function ConsultantAdmin() {
 
   const renderSubmitted = () => (
     <Panel title="Reports submitted to REA" subtitle="Track final verification outcomes">
-      <div className="ag-table-scroll"><table className="ag-table"><thead><tr><th>Report</th><th>Project</th><th>Field Officer</th><th>Score</th><th>Submitted Status</th><th>Last Updated</th></tr></thead><tbody>{sentToRea.map((claim) => <tr key={claim.id}><td><b>AIR-{claim.id.replace("CLM-", "")}</b><small>{claim.id}</small></td><td><b>{claim.project}</b><small>{claim.state}</small></td><td>{claim.fieldOfficer}</td><td><b className="ag-score">{claim.score ?? 0}%</b></td><td><StatusBadge status={claim.status} /></td><td>{claim.lastUpdated}</td></tr>)}</tbody></table></div>
+      <div className="ag-table-scroll"><table className="ag-table"><thead><tr><th>Report</th><th>Project</th><th>Field Officer</th><th>Score</th><th>Submitted Status</th><th>Last Updated</th><th>Action</th></tr></thead><tbody>{sentToRea.map((claim) => <tr key={claim.id} onClick={() => setSubmittedRecord(claim)}><td><b>AIR-{claim.id.replace("CLM-", "")}</b><small>{claim.id}</small></td><td><b>{claim.project}</b><small>{claim.state}</small></td><td>{claim.fieldOfficer}</td><td><b className="ag-score">{claim.score ?? 0}%</b></td><td><StatusBadge status={claim.status} /></td><td>{claim.lastUpdated}</td><td><button className="ag-table-action" onClick={(event) => { event.stopPropagation(); setSubmittedRecord(claim); }}>View form</button></td></tr>)}</tbody></table></div>
     </Panel>
   );
 
@@ -229,7 +255,7 @@ export default function ConsultantAdmin() {
       </div>
       <div className="ag-consultant-grid">
         <Panel title="Priority assignments" subtitle="Claims requiring field-officer assignment or action" action={<button className="ag-text-link" onClick={() => setView("Assignments")}>View all</button>}>
-          <div className="ag-consultant-priority">{unassigned.map((claim) => <button key={claim.id} onClick={() => setSelected(claim)}><span><ClipboardCheck size={18} /></span><div><b>{claim.project}</b><small>{claim.id} · {claim.state} · {claim.priority}</small></div><StatusBadge status={claim.status} /></button>)}</div>
+          <div className="ag-consultant-priority">{unassigned.map((claim) => <button key={claim.id} onClick={() => openFieldAssignment(claim)}><span><ClipboardCheck size={18} /></span><div><b>{claim.project}</b><small>{claim.id} · {claim.state} · {claim.priority}</small></div><StatusBadge status={claim.status} /></button>)}</div>
         </Panel>
         <Panel title="Workflow status" subtitle="Current consultant delivery pipeline">
           <div className="ag-consultant-flow">{[["Assigned", unassigned.length], ["In field", inField.length], ["Review", reviewQueue.length], ["Sent to REA", sentToRea.length]].map(([label, value], index) => <div key={String(label)}><span>{index + 1}</span><b>{value}</b><small>{label}</small></div>)}</div>
@@ -271,16 +297,23 @@ export default function ConsultantAdmin() {
       {selected && !["Consultant Review"].includes(selected.status) && (
         <Modal title="Assign field officer" subtitle={`${selected.project} · ${selected.state}`} onClose={() => setSelected(null)}>
           <div className="ag-detail-grid"><div><small>Claim</small><b>{selected.id}</b></div><div><small>Priority</small><StatusBadge status={selected.priority} /></div><div><small>Deadline</small><b>{selected.dueDate ?? "20 Aug 2026"}</b></div><div><small>Approved coordinates</small><b>{selected.coordinates}</b></div></div>
-          {activeFieldOfficers.length ? <div className="ag-form-grid ag-form-grid-single"><label>Field officer<select value={officerId} onChange={(event) => setOfficerId(event.target.value)}>{activeFieldOfficers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name} · {officer.phone}</option>)}</select></label><label>Inspection instructions<textarea defaultValue="Verify site arrival, complete all mandatory form sections, capture GPS-tagged evidence and obtain required signatures." /></label></div> : <div className="ag-empty-assignment"><Users size={22} /><div><b>No active field officer is available</b><p>Create or reactivate an officer in the Field Officers section.</p></div><button className="ag-button ag-button-primary" onClick={() => { setSelected(null); setView("Field Officers"); openCreateOfficer(); }}><UserPlus size={16} /> Add field officer</button></div>}
+          {activeFieldOfficers.length ? <div className="ag-form-grid ag-form-grid-single"><label>Field officer<select value={officerId} onChange={(event) => setOfficerId(event.target.value)}>{activeFieldOfficers.map((officer) => <option key={officer.id} value={officer.id}>{officer.name} · {officer.phone}</option>)}</select></label><label>Inspection instructions<textarea value={fieldInstructions} onChange={(event) => setFieldInstructions(event.target.value)} /></label></div> : <div className="ag-empty-assignment"><Users size={22} /><div><b>No active field officer is available</b><p>Create or reactivate an officer in the Field Officers section.</p></div><button className="ag-button ag-button-primary" onClick={() => { setSelected(null); setView("Field Officers"); openCreateOfficer(); }}><UserPlus size={16} /> Add field officer</button></div>}
           <div className="ag-modal-actions"><button className="ag-button ag-button-outline" onClick={() => setSelected(null)}>Cancel</button>{activeFieldOfficers.length > 0 && <button className="ag-button ag-button-primary" onClick={assign}>Assign officer</button>}</div>
         </Modal>
       )}
 
       {selected?.status === "Consultant Review" && (
-        <Modal title="Return inspection" subtitle={`${selected.project} · ${selected.fieldOfficer}`} onClose={() => setSelected(null)}>
-          <div className="ag-report-note"><b>Current recommendation</b><p>{selected.recommendation}</p></div>
-          <label className="ag-modal-label">Reason for re-inspection<textarea value={returnReason} onChange={(event) => setReturnReason(event.target.value)} /></label>
-          <div className="ag-modal-actions"><button className="ag-button ag-button-outline" onClick={() => setSelected(null)}>Cancel</button><button className="ag-button ag-button-primary" onClick={returnReport}>Return to field</button></div>
+        <Modal title="Consultant inspection review" subtitle={`${selected.project} · submitted by ${selected.fieldOfficer}`} onClose={() => { setSelected(null); setShowReturnReason(false); }} wide>
+          <InspectionReportView claim={selected} />
+          {showReturnReason && <label className="ag-modal-label ag-return-reason">Reason for re-inspection<textarea value={returnReason} onChange={(event) => setReturnReason(event.target.value)} /></label>}
+          <div className="ag-modal-actions ag-modal-actions-between"><StatusBadge status={selected.status} /><div><button className="ag-button ag-button-outline" onClick={() => { if (showReturnReason) { returnReport(); } else { setShowReturnReason(true); } }}>{showReturnReason ? "Confirm return" : "Return to field"}</button>{showReturnReason && <button className="ag-button ag-button-outline" onClick={() => setShowReturnReason(false)}>Cancel return</button>}<button className="ag-button ag-button-primary" onClick={() => approve(selected)}><CheckCircle2 size={16} /> Approve for REA</button></div></div>
+        </Modal>
+      )}
+
+      {submittedRecord && (
+        <Modal title={`AIR-${submittedRecord.id.replace("CLM-", "")}`} subtitle={`${submittedRecord.project} · ${submittedRecord.status}`} onClose={() => setSubmittedRecord(null)} wide>
+          <InspectionReportView claim={submittedRecord} />
+          <div className="ag-modal-actions"><button className="ag-button ag-button-primary" onClick={() => setSubmittedRecord(null)}>Close report</button></div>
         </Modal>
       )}
 

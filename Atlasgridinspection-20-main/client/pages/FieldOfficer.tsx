@@ -17,7 +17,33 @@ import {
   Zap,
 } from "lucide-react";
 import { KpiCard, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
-import { useAtlasGrid } from "@/context/AtlasGridContext";
+import InspectionReportView from "@/components/InspectionReportView";
+import { useAtlasGrid, type InspectionFormRecord } from "@/context/AtlasGridContext";
+
+type FieldDraft = {
+  inspectionType: InspectionFormRecord["inspectionType"];
+  equipment: string;
+  capacity: string;
+  beneficiaries: string;
+  meterNumber: string;
+  meterCondition: string;
+  transformerSerial: string;
+  transformerRating: string;
+  expectedPoles: string;
+  observedPoles: string;
+  damagedPoles: string;
+  cableLength: string;
+  contractorRepresentative: string;
+  contractorPhone: string;
+  communityRepresentative: string;
+  communityPhone: string;
+  observations: string;
+  recommendation: string;
+  photos: number;
+  communitySignature: boolean;
+  contractorSignature: boolean;
+  evidenceNames: string[];
+};
 
 export default function FieldOfficer() {
   const {
@@ -34,9 +60,22 @@ export default function FieldOfficer() {
   const selected = assignments.find((claim) => claim.id === selectedId) ?? assignments[0];
   const [checkingGps, setCheckingGps] = useState(false);
   const [notice, setNotice] = useState("");
+  const [inspectionType, setInspectionType] = useState<InspectionFormRecord["inspectionType"]>("Progress");
   const [equipment, setEquipment] = useState("");
   const [capacity, setCapacity] = useState("");
   const [beneficiaries, setBeneficiaries] = useState("");
+  const [meterNumber, setMeterNumber] = useState("");
+  const [meterCondition, setMeterCondition] = useState("Installed and sealed");
+  const [transformerSerial, setTransformerSerial] = useState("");
+  const [transformerRating, setTransformerRating] = useState("");
+  const [expectedPoles, setExpectedPoles] = useState("25");
+  const [observedPoles, setObservedPoles] = useState("25");
+  const [damagedPoles, setDamagedPoles] = useState("0");
+  const [cableLength, setCableLength] = useState("3500");
+  const [contractorRepresentative, setContractorRepresentative] = useState("");
+  const [contractorPhone, setContractorPhone] = useState("");
+  const [communityRepresentative, setCommunityRepresentative] = useState("");
+  const [communityPhone, setCommunityPhone] = useState("");
   const [observations, setObservations] = useState("");
   const [recommendation, setRecommendation] = useState("");
   const [photos, setPhotos] = useState(0);
@@ -55,20 +94,47 @@ export default function FieldOfficer() {
     setDraftReady(false);
     try {
       const stored = window.localStorage.getItem(`atlasgrid-inspection-draft-${selected.id}`);
-      const draft = stored ? JSON.parse(stored) as { equipment?: string; capacity?: string; beneficiaries?: string; observations?: string; recommendation?: string; photos?: number; communitySignature?: boolean; contractorSignature?: boolean; evidenceNames?: string[] } : null;
-      setEquipment(draft?.equipment ?? "");
-      setCapacity(draft?.capacity ?? selected.capacity.replace(/[^0-9.]/g, ""));
-      setBeneficiaries(draft?.beneficiaries ?? String(selected.beneficiaries));
-      setObservations(draft?.observations ?? "");
-      setRecommendation(draft?.recommendation ?? "");
-      setPhotos(draft?.photos ?? selected.evidenceCount ?? 0);
-      setCommunitySignature(draft?.communitySignature ?? false);
-      setContractorSignature(draft?.contractorSignature ?? false);
-      setEvidenceNames(draft?.evidenceNames ?? []);
+      const draft = stored ? JSON.parse(stored) as Partial<FieldDraft> : null;
+      const form = selected.inspectionForm;
+      setInspectionType(draft?.inspectionType ?? form?.inspectionType ?? "Progress");
+      setEquipment(draft?.equipment ?? form?.equipment.map((item) => item.type).join(", ") ?? "");
+      setCapacity(draft?.capacity ?? String(form?.capacity.observedKw ?? selected.capacity.replace(/[^0-9.]/g, "")));
+      setBeneficiaries(draft?.beneficiaries ?? String(form?.beneficiaries.verified ?? selected.beneficiaries));
+      setMeterNumber(draft?.meterNumber ?? form?.meter.number ?? "");
+      setMeterCondition(draft?.meterCondition ?? form?.meter.condition ?? "Installed and sealed");
+      setTransformerSerial(draft?.transformerSerial ?? form?.transformer.serialNumber ?? "");
+      setTransformerRating(draft?.transformerRating ?? String(form?.transformer.ratingKva ?? ""));
+      setExpectedPoles(draft?.expectedPoles ?? String(form?.infrastructure.expectedPoles ?? 25));
+      setObservedPoles(draft?.observedPoles ?? String(form?.infrastructure.observedPoles ?? 25));
+      setDamagedPoles(draft?.damagedPoles ?? String(form?.infrastructure.damagedPoles ?? 0));
+      setCableLength(draft?.cableLength ?? String(form?.infrastructure.installedCableLengthM ?? 3500));
+      setContractorRepresentative(draft?.contractorRepresentative ?? form?.contractorRepresentative.name ?? "");
+      setContractorPhone(draft?.contractorPhone ?? form?.contractorRepresentative.phone ?? "");
+      setCommunityRepresentative(draft?.communityRepresentative ?? form?.signatures.community.name ?? "");
+      setCommunityPhone(draft?.communityPhone ?? form?.signatures.community.phone ?? "");
+      setObservations(draft?.observations ?? form?.observations ?? "");
+      setRecommendation(draft?.recommendation ?? form?.recommendation ?? "");
+      setPhotos(draft?.photos ?? form?.evidence.length ?? selected.evidenceCount ?? 0);
+      setCommunitySignature(draft?.communitySignature ?? form?.signatures.community.captured ?? false);
+      setContractorSignature(draft?.contractorSignature ?? form?.signatures.contractor.captured ?? false);
+      setEvidenceNames(draft?.evidenceNames ?? form?.evidence.map((item) => item.fileName) ?? []);
     } catch {
+      setInspectionType("Progress");
       setEquipment("");
       setCapacity(selected.capacity.replace(/[^0-9.]/g, ""));
       setBeneficiaries(String(selected.beneficiaries));
+      setMeterNumber("");
+      setMeterCondition("Installed and sealed");
+      setTransformerSerial("");
+      setTransformerRating("");
+      setExpectedPoles("25");
+      setObservedPoles("25");
+      setDamagedPoles("0");
+      setCableLength("3500");
+      setContractorRepresentative("");
+      setContractorPhone("");
+      setCommunityRepresentative("");
+      setCommunityPhone("");
       setObservations("");
       setRecommendation("");
       setPhotos(selected.evidenceCount ?? 0);
@@ -81,20 +147,38 @@ export default function FieldOfficer() {
   }, [selected?.id]);
 
   const completion = useMemo(() => {
-    const checks = [equipment.trim(), capacity.trim(), beneficiaries.trim(), observations.trim(), recommendation.trim(), photos >= 3, communitySignature, contractorSignature];
+    const checks = [
+      inspectionType,
+      equipment.trim(),
+      capacity.trim(),
+      beneficiaries.trim(),
+      meterNumber.trim(),
+      transformerSerial.trim(),
+      transformerRating.trim(),
+      observedPoles.trim(),
+      cableLength.trim(),
+      contractorRepresentative.trim(),
+      communityRepresentative.trim(),
+      observations.trim(),
+      recommendation.trim(),
+      photos >= 3,
+      communitySignature,
+      contractorSignature,
+    ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
-  }, [beneficiaries, capacity, communitySignature, contractorSignature, equipment, observations, photos, recommendation]);
+  }, [beneficiaries, cableLength, capacity, communityRepresentative, communitySignature, contractorRepresentative, contractorSignature, equipment, inspectionType, meterNumber, observations, observedPoles, photos, recommendation, transformerRating, transformerSerial]);
 
   const selectedSubmitted = selected ? ["Consultant Review", "Pending REA Review", "Verified"].includes(selected.status) : false;
 
   useEffect(() => {
     if (!selected || !draftReady || selectedSubmitted) return;
     try {
-      window.localStorage.setItem(`atlasgrid-inspection-draft-${selected.id}`, JSON.stringify({ equipment, capacity, beneficiaries, observations, recommendation, photos, communitySignature, contractorSignature, evidenceNames }));
+      const draft: FieldDraft = { inspectionType, equipment, capacity, beneficiaries, meterNumber, meterCondition, transformerSerial, transformerRating, expectedPoles, observedPoles, damagedPoles, cableLength, contractorRepresentative, contractorPhone, communityRepresentative, communityPhone, observations, recommendation, photos, communitySignature, contractorSignature, evidenceNames };
+      window.localStorage.setItem(`atlasgrid-inspection-draft-${selected.id}`, JSON.stringify(draft));
     } catch {
       // Continue the current session if persistent browser storage is unavailable.
     }
-  }, [beneficiaries, capacity, communitySignature, contractorSignature, draftReady, equipment, evidenceNames, observations, photos, recommendation, selected?.id, selectedSubmitted]);
+  }, [beneficiaries, cableLength, capacity, communityPhone, communityRepresentative, communitySignature, contractorPhone, contractorRepresentative, contractorSignature, damagedPoles, draftReady, equipment, evidenceNames, expectedPoles, inspectionType, meterCondition, meterNumber, observations, observedPoles, photos, recommendation, selected?.id, selectedSubmitted, transformerRating, transformerSerial]);
 
   useEffect(() => {
     if (selected?.status === "Inspection In Progress" && completion !== selected.inspectionProgress) {
@@ -167,13 +251,139 @@ export default function FieldOfficer() {
       setNotice("Complete all required fields, capture at least three photos and collect both signatures.");
       return;
     }
+    const now = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date());
+    const approvedCapacity = Number(selected.capacity.replace(/[^0-9.]/g, "")) || 0;
+    const observedCapacity = Number(capacity) || 0;
+    const verifiedBeneficiaries = Number(beneficiaries) || 0;
+    const critical = observations.toLowerCase().includes("critical");
+    const hasDefect = critical || observations.toLowerCase().includes("defect") || Number(damagedPoles) > 0;
+    const evidenceFiles = Array.from({ length: photos }, (_, index) => evidenceNames[index] ?? `${selected.projectId.toLowerCase()}-camera-${String(index + 1).padStart(2, "0")}.jpg`);
+    const form: InspectionFormRecord = {
+      reportId: `AIR-${selected.id.replace("CLM-", "")}`,
+      formVersion: "REA-FI-2026.2",
+      inspectionType,
+      startedAt: selected.inspectionForm?.startedAt ?? now,
+      submittedAt: now,
+      deviceId: `AG-${currentUser?.id ?? "DEVICE"}-${navigator.userAgent.includes("Android") ? "ANDROID" : "WEB"}`,
+      gps: {
+        approvedCoordinates: selected.coordinates,
+        capturedCoordinates: selected.coordinates,
+        distanceM: selected.arrivalDistanceM ?? 0,
+        accuracyM: 8,
+        capturedAt: now,
+        verified: selected.arrivalVerified,
+      },
+      contractorRepresentative: {
+        name: contractorRepresentative,
+        role: "Site Supervisor",
+        phone: contractorPhone,
+        presentOnSite: true,
+      },
+      equipment: [
+        {
+          id: `${selected.id}-EQ-01`,
+          type: equipment,
+          manufacturer: "Recorded on site",
+          model: "See nameplate evidence",
+          serialNumber: transformerSerial || meterNumber,
+          quantity: 1,
+          capacity: `${observedCapacity} kW verified`,
+          condition: hasDefect ? "Fair" : "Good",
+          operational: !critical,
+        },
+      ],
+      meter: {
+        available: true,
+        type: "Three-phase smart meter",
+        number: meterNumber,
+        manufacturer: "Recorded on site",
+        condition: meterCondition,
+        reading: "Captured in meter evidence",
+      },
+      transformer: {
+        available: true,
+        manufacturer: "Recorded on site",
+        serialNumber: transformerSerial,
+        ratingKva: Number(transformerRating) || 0,
+        condition: critical ? "Requires action" : hasDefect ? "Fair" : "Good",
+        operational: !critical,
+      },
+      infrastructure: {
+        expectedPoles: Number(expectedPoles) || 0,
+        observedPoles: Number(observedPoles) || 0,
+        damagedPoles: Number(damagedPoles) || 0,
+        cableType: "Armoured distribution cable",
+        expectedCableLengthM: 3500,
+        installedCableLengthM: Number(cableLength) || 0,
+      },
+      capacity: {
+        approvedKw: approvedCapacity,
+        observedKw: observedCapacity,
+        variancePercent: approvedCapacity ? Number((((observedCapacity - approvedCapacity) / approvedCapacity) * 100).toFixed(1)) : 0,
+      },
+      beneficiaries: {
+        expected: selected.beneficiaries,
+        verified: verifiedBeneficiaries,
+        residential: Math.max(0, verifiedBeneficiaries - 70),
+        commercial: Math.min(55, verifiedBeneficiaries),
+        publicFacilities: Math.min(15, verifiedBeneficiaries),
+      },
+      observations,
+      recommendation,
+      findings: hasDefect ? [{
+        id: `${selected.id}-F01`,
+        category: critical ? "Safety / equipment" : "Installation quality",
+        severity: critical ? "Critical" : "Major",
+        description: observations,
+        correctiveAction: recommendation,
+        evidenceReference: evidenceFiles.length ? `${selected.id}-EV-01` : undefined,
+        status: "Open",
+      }] : [{
+        id: `${selected.id}-F01`,
+        category: "General observation",
+        severity: "Minor",
+        description: observations,
+        correctiveAction: recommendation,
+        evidenceReference: evidenceFiles.length ? `${selected.id}-EV-01` : undefined,
+        status: "Open",
+      }],
+      evidence: evidenceFiles.map((fileName, index) => ({
+        id: `${selected.id}-EV-${String(index + 1).padStart(2, "0")}`,
+        category: ["Site overview", "Equipment", "Transformer", "Meter", "Distribution infrastructure", "Beneficiaries"][index % 6],
+        fileName,
+        kind: "Photo",
+        capturedAt: now,
+        coordinates: selected.coordinates,
+        projectId: selected.projectId,
+        officerName: currentUser?.name ?? selected.fieldOfficer ?? "Field Officer",
+      })),
+      signatures: {
+        community: { name: communityRepresentative, role: "Community Representative", phone: communityPhone, signedAt: now, captured: communitySignature },
+        contractor: { name: contractorRepresentative, role: "Contractor Representative", phone: contractorPhone, signedAt: now, captured: contractorSignature },
+        officer: { name: currentUser?.name ?? selected.fieldOfficer ?? "Field Officer", role: "Field Officer", phone: currentUser?.phone ?? "", signedAt: now, captured: true },
+      },
+      declarationAccepted: true,
+      consultantReview: {
+        reviewerName: selected.consultantLead ?? "Consultant Lead",
+        reviewerId: "CONS-QA-PENDING",
+        reviewedAt: "Pending review",
+        decision: "Pending",
+        score: hasDefect ? 82 : 94,
+        notes: "Field submission is awaiting consultant quality assurance.",
+        gpsChecked: false,
+        evidenceChecked: false,
+        signaturesChecked: false,
+        formCompletenessChecked: false,
+      },
+    };
     const ok = submitInspection(selected.id, {
-      score: 91,
-      findings: observations.toLowerCase().includes("defect") ? 2 : 1,
-      criticalFindings: observations.toLowerCase().includes("critical") ? 1 : 0,
+      score: hasDefect ? 82 : 94,
+      findings: form.findings.length,
+      criticalFindings: critical ? 1 : 0,
       evidenceCount: photos,
       recommendation,
       inspectionProgress: completion,
+      inspectionForm: form,
     });
     if (ok) {
       try { window.localStorage.removeItem(`atlasgrid-inspection-draft-${selected.id}`); } catch { /* no-op */ }
@@ -191,7 +401,8 @@ export default function FieldOfficer() {
 
   const saveDraft = () => {
     try {
-      window.localStorage.setItem(`atlasgrid-inspection-draft-${selected.id}`, JSON.stringify({ equipment, capacity, beneficiaries, observations, recommendation, photos, communitySignature, contractorSignature, evidenceNames }));
+      const draft: FieldDraft = { inspectionType, equipment, capacity, beneficiaries, meterNumber, meterCondition, transformerSerial, transformerRating, expectedPoles, observedPoles, damagedPoles, cableLength, contractorRepresentative, contractorPhone, communityRepresentative, communityPhone, observations, recommendation, photos, communitySignature, contractorSignature, evidenceNames };
+      window.localStorage.setItem(`atlasgrid-inspection-draft-${selected.id}`, JSON.stringify(draft));
       setNotice("Inspection draft saved securely on this device.");
     } catch {
       setNotice("This browser could not persist the draft. Keep this page open and retry synchronization.");
@@ -236,6 +447,7 @@ export default function FieldOfficer() {
               <div className="ag-site-map"><div className="ag-site-grid" /><span className="ag-site-radius" /><MapPin size={24} /><b>{selected.community}</b><small>{selected.coordinates} · 250 m approved radius</small></div>
               <div className={`ag-arrival-check ${arrivalVerified ? "verified" : ""}`}><span>{arrivalVerified ? <CheckCircle2 size={22} /> : <LocateFixed size={22} />}</span><div><b>{arrivalVerified ? "Arrival verified" : "Verify arrival before data entry"}</b><p>{arrivalVerified ? `GPS, device and timestamp captured ${selected.arrivalDistanceM ?? 24} m from the approved location.` : "The inspection form remains locked until the officer is within the approved project geofence."}</p></div>{!arrivalVerified && <div className="ag-arrival-actions"><button onClick={checkLocation} disabled={checkingGps}>{checkingGps ? "Checking GPS..." : "Verify location"}</button>{demoGpsEnabled && <button className="secondary" onClick={simulateLocation}>Demo onsite</button>}</div>}</div>
               <div className="ag-workflow-strip ag-workflow-4"><div className="complete"><span>1</span><small>Assigned</small></div><div className={arrivalVerified ? "complete" : ""}><span>2</span><small>Arrival verified</small></div><div className={dataEntryOpen || alreadySubmitted ? "complete" : ""}><span>3</span><small>Data entry</small></div><div className={alreadySubmitted ? "complete" : ""}><span>4</span><small>Submitted</small></div></div>
+              {selected.fieldInstructions && <div className="ag-field-instructions"><ShieldCheck size={18} /><div><b>Consultant instructions</b><p>{selected.fieldInstructions}</p></div></div>}
               {arrivalVerified && !dataEntryOpen && !alreadySubmitted && <button className="ag-button ag-button-primary ag-full-button" onClick={beginInspection}><ClipboardCheck size={16} /> Start data entry</button>}
             </div>
           </Panel>
@@ -244,13 +456,39 @@ export default function FieldOfficer() {
         <Panel title="Inspection data entry" subtitle={dataEntryOpen ? "Required project, equipment, evidence and signature fields" : alreadySubmitted ? "Inspection has been submitted and is read-only" : "Locked until site arrival is verified and the inspection is started"} action={<div className="ag-form-progress"><span><em style={{ width: `${completion}%` }} /></span><b>{completion}%</b></div>} className={!dataEntryOpen ? "ag-panel-locked" : ""}>
           {!dataEntryOpen && !alreadySubmitted && <div className="ag-form-lock"><LockKeyhole size={23} /><b>Data entry is locked</b><p>Complete the GPS/geofence arrival check and select “Start data entry”.</p></div>}
           <fieldset className="ag-inspection-form" disabled={!dataEntryOpen}>
-            <div className="ag-form-grid">
-              <label>Equipment installed<input value={equipment} onChange={(event) => setEquipment(event.target.value)} placeholder="e.g. inverter, batteries, transformer" /></label>
-              <label>Verified capacity (kW)<input type="number" value={capacity} onChange={(event) => setCapacity(event.target.value)} /></label>
-              <label>Beneficiaries confirmed<input type="number" value={beneficiaries} onChange={(event) => setBeneficiaries(event.target.value)} /></label>
-              <label>Meter / transformer details<input placeholder="Serial number and condition" /></label>
-              <label className="ag-span-2">Observations and defects<textarea value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="Describe installation quality, safety issues and defects" /></label>
-              <label className="ag-span-2">Recommendation<textarea value={recommendation} onChange={(event) => setRecommendation(event.target.value)} placeholder="State the recommended action or verification outcome" /></label>
+            <div className="ag-field-form-sections">
+              <section><header><span>01</span><div><b>Inspection and asset details</b><small>Record the physical equipment and verified capacity.</small></div></header><div className="ag-form-grid">
+                <label>Inspection type<select value={inspectionType} onChange={(event) => setInspectionType(event.target.value as InspectionFormRecord["inspectionType"])}><option>Progress</option><option>Completion</option><option>Routine</option><option>Re-inspection</option></select></label>
+                <label>Equipment installed<input value={equipment} onChange={(event) => setEquipment(event.target.value)} placeholder="e.g. PV modules, inverters, batteries" /></label>
+                <label>Verified capacity (kW)<input type="number" value={capacity} onChange={(event) => setCapacity(event.target.value)} /></label>
+                <label>Beneficiaries confirmed<input type="number" value={beneficiaries} onChange={(event) => setBeneficiaries(event.target.value)} /></label>
+              </div></section>
+
+              <section><header><span>02</span><div><b>Meter and transformer</b><small>Use the serial numbers visible on the installed equipment.</small></div></header><div className="ag-form-grid">
+                <label>Meter number<input value={meterNumber} onChange={(event) => setMeterNumber(event.target.value)} placeholder="MTR-..." /></label>
+                <label>Meter condition<select value={meterCondition} onChange={(event) => setMeterCondition(event.target.value)}><option>Installed and sealed</option><option>Installed, seal missing</option><option>Damaged</option><option>Not operational</option></select></label>
+                <label>Transformer serial number<input value={transformerSerial} onChange={(event) => setTransformerSerial(event.target.value)} placeholder="TR-..." /></label>
+                <label>Transformer rating (kVA)<input type="number" value={transformerRating} onChange={(event) => setTransformerRating(event.target.value)} /></label>
+              </div></section>
+
+              <section><header><span>03</span><div><b>Infrastructure verification</b><small>Compare observed infrastructure against the approved scope.</small></div></header><div className="ag-form-grid ag-form-grid-4">
+                <label>Expected poles<input type="number" value={expectedPoles} onChange={(event) => setExpectedPoles(event.target.value)} /></label>
+                <label>Observed poles<input type="number" value={observedPoles} onChange={(event) => setObservedPoles(event.target.value)} /></label>
+                <label>Damaged poles<input type="number" value={damagedPoles} onChange={(event) => setDamagedPoles(event.target.value)} /></label>
+                <label>Installed cable (m)<input type="number" value={cableLength} onChange={(event) => setCableLength(event.target.value)} /></label>
+              </div></section>
+
+              <section><header><span>04</span><div><b>Representatives and signatures</b><small>Capture the names used for the signed inspection record.</small></div></header><div className="ag-form-grid">
+                <label>Contractor representative<input value={contractorRepresentative} onChange={(event) => setContractorRepresentative(event.target.value)} placeholder="Full name" /></label>
+                <label>Contractor phone<input type="tel" value={contractorPhone} onChange={(event) => setContractorPhone(event.target.value)} placeholder="080..." /></label>
+                <label>Community representative<input value={communityRepresentative} onChange={(event) => setCommunityRepresentative(event.target.value)} placeholder="Full name" /></label>
+                <label>Community phone<input type="tel" value={communityPhone} onChange={(event) => setCommunityPhone(event.target.value)} placeholder="080..." /></label>
+              </div></section>
+
+              <section><header><span>05</span><div><b>Findings and recommendation</b><small>Record what was observed and the action required.</small></div></header><div className="ag-form-grid">
+                <label className="ag-span-2">Observations and defects<textarea value={observations} onChange={(event) => setObservations(event.target.value)} placeholder="Describe installation quality, safety issues and defects" /></label>
+                <label className="ag-span-2">Recommendation<textarea value={recommendation} onChange={(event) => setRecommendation(event.target.value)} placeholder="State the recommended action or verification outcome" /></label>
+              </div></section>
             </div>
             <div className="ag-evidence-grid">
               <input ref={cameraInput} className="ag-camera-input" type="file" accept="image/*" capture="environment" multiple onChange={(event) => captureEvidence(event.target.files)} />
@@ -260,7 +498,7 @@ export default function FieldOfficer() {
             </div>
             <div className="ag-form-actions"><button type="button" className="ag-button ag-button-outline" onClick={saveDraft}><Save size={16} /> Save locally</button><button type="button" className="ag-button ag-button-primary" onClick={submit}><ShieldCheck size={16} /> Submit to consultant</button></div>
           </fieldset>
-          {alreadySubmitted && <div className="ag-submitted-state"><CheckCircle2 size={25} /><div><b>Inspection submitted</b><p>The report is now in the {selected.status} stage. Data remains read-only to protect the audit record.</p></div></div>}
+          {alreadySubmitted && <><div className="ag-submitted-state"><CheckCircle2 size={25} /><div><b>Inspection submitted</b><p>The report is now in the {selected.status} stage. Data remains read-only to protect the audit record.</p></div></div><InspectionReportView claim={selected} /></>}
         </Panel>
       </main>
     </div>

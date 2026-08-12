@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ClipboardCheck,
+  Download,
   FilePlus2,
   FileText,
   Filter,
@@ -13,7 +14,9 @@ import {
   Users,
 } from "lucide-react";
 import { KpiCard, Modal, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
+import InspectionReportView from "@/components/InspectionReportView";
 import { useAtlasGrid, type ClaimRecord, type ContractRecord } from "@/context/AtlasGridContext";
+import { downloadCsv } from "@/lib/download";
 import { readTabularFile } from "@/lib/tabularImport";
 
 const statusOrder = ["New", "Validated", "Consultant Assigned", "Field Officer Assigned", "Arrival Verified", "Inspection In Progress", "Consultant Review", "Pending REA Review", "Verified"];
@@ -33,17 +36,21 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
   const [status, setStatus] = useState("All statuses");
   const [state, setState] = useState("All states");
   const [selected, setSelected] = useState<ClaimRecord | null>(null);
+  const [showInspectionForm, setShowInspectionForm] = useState(false);
   const [newClaimOpen, setNewClaimOpen] = useState(false);
   const [selectedContract, setSelectedContract] = useState<ContractRecord | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [connectorOpen, setConnectorOpen] = useState(false);
   const [connectorName, setConnectorName] = useState("REA Project Registry");
   const [connectorEndpoint, setConnectorEndpoint] = useState("https://api.rea.gov.ng/atlasgrid");
+  const [syncMode, setSyncMode] = useState("Two-way");
   const [connectorConnected, setConnectorConnected] = useState(() => {
     try { return Boolean(window.localStorage.getItem("atlasgrid-rea-connector")); } catch { return false; }
   });
   const [consultant, setConsultant] = useState(consultants[0]);
   const [lead, setLead] = useState("Engr. Fatima Bello");
+  const [deadline, setDeadline] = useState("2026-08-20");
+  const [assignmentNotes, setAssignmentNotes] = useState("Complete field verification, evidence capture and consultant QA before submission to REA.");
   const [notice, setNotice] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -87,9 +94,26 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
     }
   };
 
+
+  const openConsultantAssignment = () => {
+    if (!selected) return;
+    setConsultant(selected.consultant ?? consultants[0]);
+    setLead(selected.consultantLead ?? "Engr. Fatima Bello");
+    setDeadline("2026-08-20");
+    setAssignmentNotes(selected.assignmentInstructions ?? "Complete field verification, evidence capture and consultant QA before submission to REA.");
+    setAssignOpen(true);
+  };
+
+  const formattedDeadline = () => {
+    const parsed = new Date(`${deadline}T00:00:00`);
+    return Number.isNaN(parsed.getTime())
+      ? "20 Aug 2026"
+      : new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(parsed);
+  };
+
   const assignSelectedConsultant = () => {
     if (!selected) return;
-    assignConsultant(selected.id, consultant, lead);
+    assignConsultant(selected.id, consultant, lead, formattedDeadline(), assignmentNotes);
     setSelected({ ...selected, status: "Consultant Assigned", consultant, consultantLead: lead });
     setAssignOpen(false);
     setNotice(`${consultant} assigned to ${selected.id}.`);
@@ -99,7 +123,7 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
     try {
       const parsed = new URL(connectorEndpoint);
       if (!/^https?:$/.test(parsed.protocol)) throw new Error("Unsupported protocol");
-      window.localStorage.setItem("atlasgrid-rea-connector", JSON.stringify({ name: connectorName, endpoint: connectorEndpoint, savedAt: new Date().toISOString() }));
+      window.localStorage.setItem("atlasgrid-rea-connector", JSON.stringify({ name: connectorName, endpoint: connectorEndpoint, mode: syncMode, savedAt: new Date().toISOString() }));
       setConnectorConnected(true);
       setConnectorOpen(false);
       setNotice(`${connectorName} configuration saved. Add approved API credentials in the deployment environment to enable live exchange.`);
@@ -115,7 +139,7 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
         title="Claims"
         description="Receive claims against registered contracts, validate project details, assign consultant firms and track the complete inspection workflow."
         meta={<><span className="ag-live-dot" /> Workflow synchronized <span>{claims.length} records in the current workspace</span></>}
-        actions={<><input ref={fileInput} type="file" accept=".csv,.xlsx,.xls" hidden onChange={(event) => handleImport(event.target.files?.[0])} /><button className="ag-button ag-button-outline" onClick={() => fileInput.current?.click()}><Upload size={16} /> Import Excel/CSV</button><button className="ag-button ag-button-outline" onClick={() => setConnectorOpen(true)}><Link2 size={16} /> {connectorConnected ? "REA system connected" : "Connect REA system"}</button><button className="ag-button ag-button-primary" onClick={() => setNewClaimOpen(true)}><FilePlus2 size={16} /> New claim</button></>}
+        actions={<><input ref={fileInput} type="file" accept=".csv,.xlsx" hidden onChange={(event) => handleImport(event.target.files?.[0])} /><button className="ag-button ag-button-outline" onClick={() => downloadCsv("atlasgrid-claims-import-template.csv", [["Contract Number", "Claim Reference", "Submitted By", "Notes"], ...contracts.slice(0, 4).map((contract, index) => [contract.id, `REA-CLAIM-${String(index + 1).padStart(3, "0")}`, "REA Claims Desk", "Inspect against the approved contract scope and coordinates."])])}><Download size={16} /> Download template</button><button className="ag-button ag-button-outline" onClick={() => fileInput.current?.click()}><Upload size={16} /> Import Excel/CSV</button><button className="ag-button ag-button-outline" onClick={() => setConnectorOpen(true)}><Link2 size={16} /> {connectorConnected ? "REA system connected" : "Connect REA system"}</button><button className="ag-button ag-button-primary" onClick={() => setNewClaimOpen(true)}><FilePlus2 size={16} /> New claim</button></>}
       />
 
       {notice && <button className="ag-notice" onClick={() => setNotice("")}>{notice}<span>×</span></button>}
@@ -135,7 +159,7 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
             <thead><tr><th>Claim</th><th>Contract / Project</th><th>Contractor</th><th>Location</th><th>Consultant</th><th>Status</th><th>Updated</th><th>Action</th></tr></thead>
             <tbody>
               {filtered.map((claim) => (
-                <tr key={claim.id} onClick={() => setSelected(claim)}>
+                <tr key={claim.id} onClick={() => { setSelected(claim); setShowInspectionForm(false); }}>
                   <td><b>{claim.id}</b><small>{claim.submittedDate}</small></td>
                   <td><b>{claim.project}</b><small>{claim.contractId}</small></td>
                   <td>{claim.contractor}</td>
@@ -143,7 +167,7 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
                   <td>{claim.consultant ?? <span className="ag-muted">Unassigned</span>}</td>
                   <td><StatusBadge status={claim.status} /></td>
                   <td>{claim.lastUpdated}</td>
-                  <td><button className="ag-table-action" onClick={(event) => { event.stopPropagation(); setSelected(claim); }}>Open</button></td>
+                  <td><button className="ag-table-action" onClick={(event) => { event.stopPropagation(); setSelected(claim); setShowInspectionForm(false); }}>Open</button></td>
                 </tr>
               ))}
             </tbody>
@@ -152,7 +176,7 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
       </Panel>
 
       {selected && (
-        <Modal title={selected.id} subtitle={`${selected.project} · ${selected.contractId}`} onClose={() => setSelected(null)} wide>
+        <Modal title={selected.id} subtitle={`${selected.project} · ${selected.contractId}`} onClose={() => { setSelected(null); setShowInspectionForm(false); }} wide>
           <div className="ag-workflow-strip">
             {statusOrder.map((item, index) => {
               const currentIndex = statusOrder.indexOf(selected.status);
@@ -170,11 +194,13 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
             <div><small>Inspection progress</small><b>{selected.inspectionProgress}%</b></div>
           </div>
           <div className="ag-coordinate-card"><MapPin size={18} /><div><b>Approved project location</b><small>Coordinates are controlled by the contract register and are read-only during claim intake.</small></div><button onClick={() => { onOpenMap?.(selected.state, selected.projectId); setSelected(null); }}>View map</button></div>
+          {selected.inspectionForm && <button className="ag-report-toggle" onClick={() => setShowInspectionForm((value) => !value)}><FileText size={17} /><span><b>{showInspectionForm ? "Hide submitted inspection form" : "Open submitted inspection form"}</b><small>GPS, equipment, findings, evidence, signatures and review history</small></span></button>}
+          {showInspectionForm && selected.inspectionForm && <InspectionReportView claim={selected} />}
           <div className="ag-modal-actions ag-modal-actions-between">
             <div><StatusBadge status={selected.status} /></div>
             <div>
               {selected.status === "New" && <button className="ag-button ag-button-primary" onClick={() => { validateClaim(selected.id); setSelected({ ...selected, status: "Validated" }); setNotice(`${selected.id} validated.`); }}>Validate claim</button>}
-              {selected.status === "Validated" && <button className="ag-button ag-button-primary" onClick={() => setAssignOpen(true)}>Assign consultant</button>}
+              {selected.status === "Validated" && <button className="ag-button ag-button-primary" onClick={openConsultantAssignment}>Assign consultant</button>}
               {selected.status === "Pending REA Review" && <><button className="ag-button ag-button-outline" onClick={() => { rejectClaim(selected.id, "Returned for additional evidence."); setSelected({ ...selected, status: "Rejected" }); }}>Reject</button><button className="ag-button ag-button-primary" onClick={() => { reaVerify(selected.id); setSelected({ ...selected, status: "Verified" }); setNotice(`${selected.id} verified by REA.`); }}>Verify report</button></>}
               {!['New', 'Validated', 'Pending REA Review'].includes(selected.status) && <button className="ag-button ag-button-outline" onClick={() => setSelected(null)}>Close</button>}
             </div>
@@ -202,7 +228,7 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
           <div className="ag-form-grid ag-form-grid-single">
             <label>System name<input value={connectorName} onChange={(event) => setConnectorName(event.target.value)} /></label>
             <label>API endpoint<input type="url" value={connectorEndpoint} onChange={(event) => setConnectorEndpoint(event.target.value)} placeholder="https://api.rea.gov.ng/..." /></label>
-            <label>Synchronization mode<select defaultValue="Two-way"><option>Two-way</option><option>Import only</option><option>Export only</option></select></label>
+            <label>Synchronization mode<select value={syncMode} onChange={(event) => setSyncMode(event.target.value)}><option>Two-way</option><option>Import only</option><option>Export only</option></select></label>
           </div>
           <div className="ag-connector-note"><ShieldCheck size={18} /><div><b>Credentials are not stored in the browser</b><small>Configure secrets and authentication in Cloudflare or your approved backend before enabling production synchronization.</small></div></div>
           <div className="ag-modal-actions"><button className="ag-button ag-button-outline" onClick={() => setConnectorOpen(false)}>Cancel</button><button className="ag-button ag-button-primary" onClick={saveConnector}>Save connection</button></div>
@@ -211,7 +237,7 @@ export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: 
 
       {assignOpen && selected && (
         <Modal title="Assign consultant" subtitle="REA assigns the consultant firm. The consultant will assign its own field officer." onClose={() => setAssignOpen(false)}>
-          <div className="ag-form-grid ag-form-grid-single"><label>Consultant firm<select value={consultant} onChange={(event) => setConsultant(event.target.value)}>{consultants.map((item) => <option key={item}>{item}</option>)}</select></label><label>Consultant lead<input value={lead} onChange={(event) => setLead(event.target.value)} /></label><label>Inspection deadline<input type="date" defaultValue="2026-08-20" /></label><label>Assignment notes<textarea defaultValue="Complete field verification, evidence capture and consultant QA before submission to REA." /></label></div>
+          <div className="ag-form-grid ag-form-grid-single"><label>Consultant firm<select value={consultant} onChange={(event) => setConsultant(event.target.value)}>{consultants.map((item) => <option key={item}>{item}</option>)}</select></label><label>Consultant lead<input value={lead} onChange={(event) => setLead(event.target.value)} /></label><label>Inspection deadline<input type="date" value={deadline} onChange={(event) => setDeadline(event.target.value)} /></label><label>Assignment notes<textarea value={assignmentNotes} onChange={(event) => setAssignmentNotes(event.target.value)} /></label></div>
           <div className="ag-modal-actions"><button className="ag-button ag-button-outline" onClick={() => setAssignOpen(false)}>Cancel</button><button className="ag-button ag-button-primary" onClick={assignSelectedConsultant}>Assign consultant</button></div>
         </Modal>
       )}

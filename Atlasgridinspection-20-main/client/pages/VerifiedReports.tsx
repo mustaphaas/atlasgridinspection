@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Download, FileCheck2, FileClock, Search, ShieldCheck, TriangleAlert } from "lucide-react";
 import { KpiCard, Modal, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
+import InspectionReportView from "@/components/InspectionReportView";
 import { useAtlasGrid, type ClaimRecord } from "@/context/AtlasGridContext";
-import { downloadCsv, downloadText } from "@/lib/download";
+import { downloadCsv, downloadJson, downloadText } from "@/lib/download";
 
 function downloadReport(report: ClaimRecord) {
   const content = [
@@ -103,18 +104,8 @@ export default function VerifiedReports() {
 
       {selected && (
         <Modal title={`AIR-${selected.id.replace("CLM-", "")}`} subtitle={`${selected.project} · ${selected.state}, Nigeria`} onClose={() => setSelected(null)} wide>
-          <div className="ag-detail-grid">
-            <div><small>Contractor</small><b>{selected.contractor}</b></div>
-            <div><small>Consultant</small><b>{selected.consultant ?? "-"}</b></div>
-            <div><small>Field officer</small><b>{selected.fieldOfficer ?? "-"}</b></div>
-            <div><small>GPS verification</small><b>{selected.arrivalVerified ? `Verified · ${selected.arrivalDistanceM ?? 0} m` : "Not verified"}</b></div>
-            <div><small>Inspection score</small><b>{selected.score ?? 0}%</b></div>
-            <div><small>Evidence captured</small><b>{selected.evidenceCount ?? 0} files</b></div>
-            <div><small>Findings</small><b>{selected.findings ?? 0}</b></div>
-            <div><small>Critical findings</small><b>{selected.criticalFindings ?? 0}</b></div>
-          </div>
-          <div className="ag-report-note"><b>Recommendation</b><p>{selected.recommendation ?? "No additional recommendation recorded."}</p></div>
-          <div className="ag-modal-actions ag-modal-actions-between"><StatusBadge status={selected.status} /><div><button className="ag-button ag-button-outline" onClick={() => downloadReport(selected)}><Download size={16} /> Download record</button>{selected.status === "Pending REA Review" && <><button className="ag-button ag-button-outline" onClick={() => { returnForReinspection(selected.id, "REA requested additional field evidence.", "Musa Danjuma", "REA Reviewer"); setNotice(`${selected.id} returned for re-inspection.`); setSelected(null); }}>Return</button><button className="ag-button ag-button-primary" onClick={() => { reaVerify(selected.id); setNotice(`${selected.id} verified and added to controlled records.`); setSelected(null); }}>Verify report</button></>}</div></div>
+          <InspectionReportView claim={selected} />
+          <div className="ag-modal-actions ag-modal-actions-between"><StatusBadge status={selected.status} /><div><button className="ag-button ag-button-outline" onClick={() => downloadReport(selected)}><Download size={16} /> Download summary</button><button className="ag-button ag-button-outline" onClick={() => downloadJson(`${selected.id}-inspection-record.json`, selected)}><Download size={16} /> Download full form</button>{selected.status === "Pending REA Review" && <><button className="ag-button ag-button-outline" onClick={() => { returnForReinspection(selected.id, "REA requested additional field evidence and clarification of the outstanding finding.", undefined, "REA Reviewer"); setNotice(`${selected.id} returned for re-inspection.`); setSelected(null); }}>Return for evidence</button><button className="ag-button ag-button-primary" onClick={() => { reaVerify(selected.id); setNotice(`${selected.id} verified and added to controlled records.`); setSelected(null); }}>Verify report</button></>}</div></div>
         </Modal>
       )}
     </section>
