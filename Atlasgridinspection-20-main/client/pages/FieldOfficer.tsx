@@ -22,12 +22,14 @@ import { useAtlasGrid } from "@/context/AtlasGridContext";
 export default function FieldOfficer() {
   const {
     claims,
+    currentUser,
+    signOut,
     verifyArrival,
     startInspection,
     updateInspectionProgress,
     submitInspection,
   } = useAtlasGrid();
-  const assignments = useMemo(() => claims.filter((claim) => claim.fieldOfficer === "Amina Yusuf" || claim.fieldOfficerId === "USR-004"), [claims]);
+  const assignments = useMemo(() => claims.filter((claim) => claim.fieldOfficerId === currentUser?.id || claim.fieldOfficer === currentUser?.name), [claims, currentUser?.id, currentUser?.name]);
   const [selectedId, setSelectedId] = useState(assignments[0]?.id ?? "");
   const selected = assignments.find((claim) => claim.id === selectedId) ?? assignments[0];
   const [checkingGps, setCheckingGps] = useState(false);
@@ -101,7 +103,7 @@ export default function FieldOfficer() {
   }, [completion, selected?.id, selected?.status]);
 
   if (!selected) {
-    return <div className="ag-officer-shell"><div className="ag-officer-empty"><ClipboardCheck size={28} /><h1>No assignments</h1><p>Your consultant has not assigned an inspection yet.</p><Link to="/login">Return to login</Link></div></div>;
+    return <div className="ag-officer-shell"><div className="ag-officer-empty"><ClipboardCheck size={28} /><h1>No assignments</h1><p>Your consultant has not assigned an inspection yet.</p><Link to="/login" onClick={signOut}>Sign out</Link></div></div>;
   }
 
   const arrivalVerified = selected.arrivalVerified;
@@ -201,7 +203,7 @@ export default function FieldOfficer() {
       <header className="ag-role-topbar">
         <div className="ag-brand ag-role-brand"><span className="ag-brand-logo"><Zap size={19} fill="currentColor" /></span><div className="ag-brand-copy"><b>Atlas Grid Inspection</b><small>FIELD OFFICER APPLICATION</small></div></div>
         <div className="ag-role-live"><span /> Offline-ready field workspace</div>
-        <div className="ag-role-user"><span>AY</span><div><b>Amina Yusuf</b><small>Field Officer · FO-0198</small></div><Link to="/login"><LogOut size={15} /> Log out</Link></div>
+        <div className="ag-role-user"><span>{(currentUser?.name ?? "FO").split(" ").map((part) => part[0]).filter(Boolean).slice(0, 2).join("")}</span><div><b>{currentUser?.name ?? "Field Officer"}</b><small>Field Officer · {currentUser?.id ?? "Unassigned"} · {currentUser?.phone ?? "Phone not set"}</small></div><Link to="/login" onClick={signOut}><LogOut size={15} /> Log out</Link></div>
       </header>
 
       <main className="ag-role-content ag-officer-content">

@@ -44,7 +44,7 @@ const slugByLabel = Object.fromEntries(nav.map((item) => [item.label, item.slug]
 const labelBySlug = Object.fromEntries(nav.map((item) => [item.slug, item.label])) as Record<string, PortalTab>;
 
 export default function Index() {
-  const { claims, auditEvents } = useAtlasGrid();
+  const { claims, auditEvents, currentUser, signOut } = useAtlasGrid();
   const [params, setParams] = useSearchParams();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -123,7 +123,7 @@ export default function Index() {
 
         <div className="ag-account-card">
           <span>AL</span>
-          <div><b>REA Administration</b><small>National verification workspace</small></div>
+          <div><b>{currentUser?.organization ?? "REA Administration"}</b><small>National verification workspace</small></div>
           <ShieldCheck size={17} />
         </div>
 
@@ -143,10 +143,8 @@ export default function Index() {
 
         <div className="ag-sidebar-bottom">
           <div className="ag-system-status"><span /><div><b>Workflow synchronized</b><small>Cross-tab browser workspace active</small></div></div>
-          <Link to="/consultant-admin" className="ag-role-link"><Users size={16} /><span>Consultant portal</span></Link>
-          <Link to="/field-officer" className="ag-role-link"><Map size={16} /><span>Field officer portal</span></Link>
-          <div className="ag-user-card"><span>FS</span><div><b>Engr. Fatima Sani</b><small>REA programme lead</small></div><ChevronDown size={15} /></div>
-          <Link to="/login" className="ag-signout"><LogOut size={15} /> Sign out</Link>
+          <div className="ag-user-card"><span>{(currentUser?.name ?? "REA Admin").split(" ").map((part) => part[0]).filter(Boolean).slice(0, 2).join("")}</span><div><b>{currentUser?.name ?? "REA Administrator"}</b><small>{currentUser?.role ?? "REA Admin"}</small></div><ChevronDown size={15} /></div>
+          <Link to="/login" className="ag-signout" onClick={signOut}><LogOut size={15} /> Sign out</Link>
         </div>
       </aside>
 
@@ -157,7 +155,7 @@ export default function Index() {
           <div className="ag-top-actions">
             <form className="ag-global-search" onSubmit={submitSearch}><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search claims, projects, contractors" /></form>
             <button className="ag-top-icon" onClick={() => setNotificationsOpen((value) => !value)} aria-label="Notifications"><Bell size={18} /><i>{Math.min(12, auditEvents.length)}</i></button>
-            <div className="ag-top-avatar">FS</div>
+            <div className="ag-top-avatar">{(currentUser?.name ?? "REA").split(" ").map((part) => part[0]).filter(Boolean).slice(0, 2).join("")}</div>
           </div>
           {notificationsOpen && (
             <div className="ag-notification-popover">
