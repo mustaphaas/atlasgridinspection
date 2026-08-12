@@ -1,70 +1,122 @@
-import { CalendarDays, ChevronDown, Download, Eye, FileCheck2, FileText, Search, ShieldCheck, Wrench } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CheckCircle2, Download, FileCheck2, FileClock, Search, ShieldCheck, TriangleAlert } from "lucide-react";
+import { KpiCard, Modal, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
+import { useAtlasGrid, type ClaimRecord } from "@/context/AtlasGridContext";
+import { downloadCsv, downloadText } from "@/lib/download";
 
-const reports = [
-  { id: "AIR-2026-00482", projectId: "REA-KN-2026-0042", project: "Kano Solar Mini Grid", location: "Kano, Nigeria", contractor: "ABC Energy Ltd.", type: "Completion", officer: "Ibrahim A.", officerId: "FO-010", inspectionDate: "08 May 2026", score: 94, findings: "2 Findings", verificationDate: "08 May 2026", status: "Verified" },
-  { id: "AIR-2026-00479", projectId: "REA-KD-2026-0038", project: "Kaduna 33kV Line Extension", location: "Kaduna, Nigeria", contractor: "PowerGrid Ltd.", type: "Progress", officer: "Musa K.", officerId: "FO-011", inspectionDate: "07 May 2026", score: 88, findings: "3 Findings", verificationDate: "07 May 2026", status: "Verified" },
-  { id: "AIR-2026-00476", projectId: "REA-BA-2026-0029", project: "Bauchi Mini Grid", location: "Bauchi, Nigeria", contractor: "GreenVolt Ltd.", type: "Routine", officer: "Aliyu S.", officerId: "FO-012", inspectionDate: "06 May 2026", score: 92, findings: "1 Critical", verificationDate: "06 May 2026", status: "Verified" },
-  { id: "AIR-2026-00473", projectId: "REA-SO-2026-0024", project: "Sokoto Solar Project", location: "Sokoto, Nigeria", contractor: "Nura Energy Ltd.", type: "Completion", officer: "Amina Y.", officerId: "FO-013", inspectionDate: "05 May 2026", score: 90, findings: "2 Findings", verificationDate: "05 May 2026", status: "Verified" },
-  { id: "AIR-2026-00469", projectId: "REA-JG-2026-0019", project: "Tshida Distribution", location: "Jigawa, Nigeria", contractor: "E-Sabem Ltd.", type: "Progress", officer: "Salihu M.", officerId: "FO-014", inspectionDate: "05 May 2026", score: 85, findings: "4 Findings", verificationDate: "05 May 2026", status: "Verified" },
-  { id: "AIR-2026-00466", projectId: "REA-PL-2026-0017", project: "Plateau Mini-Grid", location: "Plateau, Nigeria", contractor: "LightUp Africa", type: "Re-inspection", officer: "Grace E.", officerId: "FO-015", inspectionDate: "03 May 2026", score: 97, findings: "1 Critical", verificationDate: "03 May 2026", status: "Verified" },
-  { id: "AIR-2026-00463", projectId: "REA-PL-2026-0015", project: "Jos Solar Extension", location: "Plateau, Nigeria", contractor: "Northern Elect. Co.", type: "Progress", officer: "Haruna P.", officerId: "FO-016", inspectionDate: "02 May 2026", score: 89, findings: "3 Findings", verificationDate: "02 May 2026", status: "Verified" },
-  { id: "AIR-2026-00460", projectId: "REA-YO-2026-0013", project: "Yobe Solar Mini Grid", location: "Yobe, Nigeria", contractor: "SunPower Nig. Ltd.", type: "Completion", officer: "Bello F.", officerId: "FO-017", inspectionDate: "01 May 2026", score: 93, findings: "2 Findings", verificationDate: "01 May 2026", status: "Verified" },
-  { id: "AIR-2026-00457", projectId: "REA-NA-2026-0012", project: "Nasarawa 33kV Line", location: "Nasarawa, Nigeria", contractor: "VoltageWorks Ltd.", type: "Routine", officer: "Jibril T.", officerId: "FO-018", inspectionDate: "30 Apr 2026", score: 91, findings: "1 Critical", verificationDate: "30 Apr 2026", status: "Verified" },
-  { id: "AIR-2026-00454", projectId: "REA-BE-2026-0008", project: "Benue Rural Electrification", location: "Benue, Nigeria", contractor: "Benue Power Solutions", type: "Progress", officer: "Audu O.", officerId: "FO-019", inspectionDate: "29 Apr 2026", score: 87, findings: "3 Findings", verificationDate: "29 Apr 2026", status: "Verified" },
-];
-
-const summaryCards = [
-  ["Verified Reports", "187", "Total reports", FileCheck2, "green"],
-  ["Projects Covered", "154", "Unique projects", FileText, "green"],
-  ["Verified This Period", "52", "Current reporting period", CalendarDays, "green"],
-  ["Average Score", "91%", "Average inspection score", ShieldCheck, "green"],
-  ["Critical Findings", "9", "From verified reports", ShieldCheck, "red"],
-  ["Open Corrective Actions", "71", "Require follow-up", Wrench, "amber"],
-] as const;
+function downloadReport(report: ClaimRecord) {
+  const content = [
+    "ATLAS GRID INSPECTION - REA VERIFIED REPORT",
+    `Report ID: AIR-${report.id.replace("CLM-", "")}`,
+    `Claim ID: ${report.id}`,
+    `Project: ${report.project}`,
+    `Contractor: ${report.contractor}`,
+    `Location: ${report.community}, ${report.lga}, ${report.state}`,
+    `Consultant: ${report.consultant ?? "-"}`,
+    `Field Officer: ${report.fieldOfficer ?? "-"}`,
+    `Score: ${report.score ?? 0}%`,
+    `Findings: ${report.findings ?? 0}`,
+    `Evidence: ${report.evidenceCount ?? 0} files`,
+    `Outcome: ${report.status}`,
+    `Recommendation: ${report.recommendation ?? "Verified as recorded."}`,
+  ].join("\n");
+  downloadText(`${report.id}-verified-report.txt`, content);
+}
 
 export default function VerifiedReports() {
-  return <section className="verified-reference verified-clean-page">
-    <header className="verified-reference-header">
-      <div><div className="verified-kicker"><span /> CONTROLLED RECORDS / REA ADMIN</div><h1>Verified Reports</h1><p>Inspection reports reviewed and verified by REA.</p></div>
-      <div className="verified-header-actions"><button><CalendarDays size={14} /> 01 May 2026 - 31 May 2026 <ChevronDown size={13} /></button></div>
-    </header>
+  const { claims, reaVerify, returnForReinspection } = useAtlasGrid();
+  const [tab, setTab] = useState<"verified" | "queue">("verified");
+  const [search, setSearch] = useState("");
+  const [state, setState] = useState("All states");
+  const [selected, setSelected] = useState<ClaimRecord | null>(null);
+  const [sort, setSort] = useState("Newest first");
+  const [notice, setNotice] = useState("");
 
-    <div className="verified-summary-cards">{summaryCards.map(([label, value, detail, Icon, tone]) => <div className={`verified-summary-card ${tone}`} key={label}><span><Icon size={16} /></span><small>{label}</small><b>{value}</b><em>{detail}</em></div>)}</div>
+  const verified = claims.filter((claim) => claim.status === "Verified");
+  const queue = claims.filter((claim) => claim.status === "Pending REA Review");
+  const source = tab === "verified" ? verified : queue;
+  const filtered = useMemo(() => {
+    const records = source.filter((report) => {
+      const query = search.trim().toLowerCase();
+      return (!query || `${report.id} ${report.project} ${report.contractor} ${report.fieldOfficer ?? ""}`.toLowerCase().includes(query)) && (state === "All states" || report.state === state);
+    });
+    return [...records].sort((a, b) => {
+      if (sort === "Highest score") return (b.score ?? 0) - (a.score ?? 0);
+      if (sort === "Most findings") return (b.findings ?? 0) - (a.findings ?? 0);
+      return b.id.localeCompare(a.id);
+    });
+  }, [search, sort, source, state]);
 
-    <div className="verified-filter-card">
-      <div className="verified-filter-title-clean"><div><h2>Search & Filter</h2><p>Find authoritative records by report, project, contractor, location or verifier.</p></div><span>4 filters active</span></div>
-      <div className="verified-filter-search"><Search size={15} /><input placeholder="Search report ID, project, contractor, officer..." /></div>
-      <div className="verified-filter-grid">
-        {["State", "LGA", "Project", "Contractor", "Inspection Type", "Verified By"].map((label) => <label key={label}><span>{label}</span><select><option>All {label === "LGA" ? "LGAs" : label.toLowerCase() + "s"}</option></select></label>)}
+  const averageScore = verified.length ? Math.round(verified.reduce((sum, item) => sum + (item.score ?? 0), 0) / verified.length) : 0;
+  const critical = verified.reduce((sum, item) => sum + (item.criticalFindings ?? 0), 0);
+
+  return (
+    <section className="ag-page ag-reports-page">
+      <PageTitle
+        eyebrow="CONTROLLED RECORDS / REA ADMIN"
+        title="Verified Reports"
+        description="Review pending submissions and manage the authoritative inspection reports verified by REA."
+        meta={<><span className="ag-live-dot" /> Controlled records <span>Updated today, 09:40 AM</span></>}
+        actions={<button className="ag-button ag-button-outline" onClick={() => { downloadCsv("atlasgrid-verified-reports.csv", [["Report ID", "Claim ID", "Project", "Contractor", "State", "Field Officer", "Score", "Findings", "Critical Findings", "Status"], ...filtered.map((report) => [`AIR-${report.id.replace("CLM-", "")}`, report.id, report.project, report.contractor, report.state, report.fieldOfficer ?? "", report.score ?? 0, report.findings ?? 0, report.criticalFindings ?? 0, report.status])]); setNotice("Filtered reports downloaded as CSV."); }}><Download size={16} /> Export reports</button>}
+      />
+
+      {notice && <button className="ag-notice" onClick={() => setNotice("")}>{notice}<span>×</span></button>}
+
+      <div className="ag-kpi-grid ag-kpi-grid-6">
+        <KpiCard label="Verified Reports" value={Math.max(187, verified.length)} detail="Authoritative records" icon={FileCheck2} tone="green" onClick={() => setTab("verified")} />
+        <KpiCard label="Projects Covered" value="154" detail="Unique projects" icon={ShieldCheck} tone="mint" />
+        <KpiCard label="Verified This Period" value="52" detail="Current reporting period" icon={CheckCircle2} tone="green" />
+        <KpiCard label="Average Score" value={`${averageScore || 91}%`} detail="Inspection quality score" icon={ShieldCheck} tone="blue" />
+        <KpiCard label="Critical Findings" value={Math.max(9, critical)} detail="Within verified reports" icon={TriangleAlert} tone="rose" />
+        <KpiCard label="REA Review Queue" value={queue.length} detail="Awaiting final decision" icon={FileClock} tone="amber" onClick={() => setTab("queue")} />
       </div>
-      <div className="verified-filter-row">
-        <label><span>Score Range</span><select><option>All Scores</option></select></label>
-        <label><span>Finding Severity</span><select><option>All Severities</option></select></label>
-        <label><span>Verification Date</span><div className="verified-date"><input placeholder="Start date" /><CalendarDays size={13} /><input placeholder="End date" /></div></label>
-        <label><span>Report Status</span><select><option>Verified</option></select></label>
-        <button className="verified-reset">Reset</button>
-        <button className="verified-export"><Download size={14} /> Export Reports</button>
-      </div>
-    </div>
 
-    <div className="verified-table-card">
-      <div className="verified-table-toolbar"><div><b>Verified Reports</b><span>Showing 1 to 10 of 187 verified reports</span></div><button>Sort by: Newest First <ChevronDown size={12} /></button></div>
-      <div className="verified-table-wrap"><table className="verified-table verified-table-clean"><thead><tr><th>REPORT ID</th><th>PROJECT</th><th>CONTRACTOR</th><th>TYPE</th><th>FIELD OFFICER</th><th>INSPECTION DATE</th><th>SCORE</th><th>FINDINGS</th><th>VERIFICATION DATE</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>{reports.map((report) => <tr key={report.id}>
-        <td><b>{report.id}</b><small>{report.projectId}</small></td>
-        <td><b>{report.project}</b><small>{report.location}</small></td>
-        <td>{report.contractor}</td>
-        <td><span className={`inspection-type ${report.type.toLowerCase().replace(/ /g, "-")}`}>{report.type}</span></td>
-        <td><div className="verified-person"><span>{report.officer.split(" ").map((part) => part[0]).join("")}</span><div><b>{report.officer}</b><small>{report.officerId}</small></div></div></td>
-        <td>{report.inspectionDate}<small>09:30 AM</small></td>
-        <td><strong className={report.score >= 85 ? "score-verified" : "score-warning"}>{report.score}%</strong><small>Compliant</small></td>
-        <td><b>{report.findings.split(" ")[0]}</b><small className={report.findings.includes("Critical") ? "finding-critical" : "finding-minor"}>{report.findings}</small></td>
-        <td>{report.verificationDate}<small>02:15 PM</small></td>
-        <td><span className="verified-status"><ShieldCheck size={11} /> {report.status}</span></td>
-        <td><button className="verified-row-view"><Eye size={14} /> View</button></td>
-      </tr>)}</tbody></table></div>
-      <footer className="verified-pagination"><label>Rows per page <select><option>10</option><option>25</option><option>50</option></select></label><div><button className="active">1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>…</button><button>19</button></div></footer>
-    </div>
+      <Panel title={tab === "verified" ? "Official verified records" : "REA verification queue"} subtitle={tab === "verified" ? "Reports that completed REA review" : "Consultant-approved reports awaiting REA action"} action={<div className="ag-segmented"><button className={tab === "verified" ? "active" : ""} onClick={() => setTab("verified")}>Verified records</button><button className={tab === "queue" ? "active" : ""} onClick={() => setTab("queue")}>Review queue ({queue.length})</button></div>}>
+        <div className="ag-record-toolbar">
+          <label><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search report ID, project, contractor or officer" /></label>
+          <select value={state} onChange={(event) => setState(event.target.value)}><option>All states</option>{[...new Set(source.map((item) => item.state))].map((item) => <option key={item}>{item}</option>)}</select>
+          <select value={sort} onChange={(event) => setSort(event.target.value)}><option>Newest first</option><option>Highest score</option><option>Most findings</option></select>
+        </div>
+        <div className="ag-table-scroll">
+          <table className="ag-table">
+            <thead><tr><th>Report</th><th>Project</th><th>Contractor</th><th>Field Officer</th><th>Score</th><th>Findings</th><th>Verification</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              {filtered.map((report) => (
+                <tr key={report.id} onClick={() => setSelected(report)}>
+                  <td><b>AIR-{report.id.replace("CLM-", "")}</b><small>{report.id}</small></td>
+                  <td><b>{report.project}</b><small>{report.state}, Nigeria</small></td>
+                  <td>{report.contractor}</td>
+                  <td><b>{report.fieldOfficer ?? "-"}</b><small>{report.fieldOfficerId ?? "-"}</small></td>
+                  <td><b className="ag-score">{report.score ?? 0}%</b><small>{(report.score ?? 0) >= 85 ? "Compliant" : "Review required"}</small></td>
+                  <td><b>{report.findings ?? 0}</b><small>{report.criticalFindings ? `${report.criticalFindings} critical` : "No critical"}</small></td>
+                  <td><b>{report.lastUpdated}</b><small>{report.arrivalDistanceM ?? 0} m from site</small></td>
+                  <td><StatusBadge status={report.status} /></td>
+                  <td><button className="ag-table-action" onClick={(event) => { event.stopPropagation(); setSelected(report); }}>View</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
-    <div className="verified-controlled-note"><ShieldCheck size={18} /><div><b>Official Verified Records</b><span>These reports have completed REA review and represent the authoritative inspection versions.</span></div><strong>CONTROLLED RECORDS</strong></div>
-  </section>;
+      <div className="ag-controlled-record"><ShieldCheck size={21} /><div><b>Official verified records</b><p>Verified reports are the authoritative inspection versions. Every action is retained in the audit trail.</p></div></div>
+
+      {selected && (
+        <Modal title={`AIR-${selected.id.replace("CLM-", "")}`} subtitle={`${selected.project} · ${selected.state}, Nigeria`} onClose={() => setSelected(null)} wide>
+          <div className="ag-detail-grid">
+            <div><small>Contractor</small><b>{selected.contractor}</b></div>
+            <div><small>Consultant</small><b>{selected.consultant ?? "-"}</b></div>
+            <div><small>Field officer</small><b>{selected.fieldOfficer ?? "-"}</b></div>
+            <div><small>GPS verification</small><b>{selected.arrivalVerified ? `Verified · ${selected.arrivalDistanceM ?? 0} m` : "Not verified"}</b></div>
+            <div><small>Inspection score</small><b>{selected.score ?? 0}%</b></div>
+            <div><small>Evidence captured</small><b>{selected.evidenceCount ?? 0} files</b></div>
+            <div><small>Findings</small><b>{selected.findings ?? 0}</b></div>
+            <div><small>Critical findings</small><b>{selected.criticalFindings ?? 0}</b></div>
+          </div>
+          <div className="ag-report-note"><b>Recommendation</b><p>{selected.recommendation ?? "No additional recommendation recorded."}</p></div>
+          <div className="ag-modal-actions ag-modal-actions-between"><StatusBadge status={selected.status} /><div><button className="ag-button ag-button-outline" onClick={() => downloadReport(selected)}><Download size={16} /> Download record</button>{selected.status === "Pending REA Review" && <><button className="ag-button ag-button-outline" onClick={() => { returnForReinspection(selected.id, "REA requested additional field evidence.", "Musa Danjuma", "REA Reviewer"); setNotice(`${selected.id} returned for re-inspection.`); setSelected(null); }}>Return</button><button className="ag-button ag-button-primary" onClick={() => { reaVerify(selected.id); setNotice(`${selected.id} verified and added to controlled records.`); setSelected(null); }}>Verify report</button></>}</div></div>
+        </Modal>
+      )}
+    </section>
+  );
 }

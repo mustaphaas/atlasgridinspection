@@ -13,6 +13,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { downloadCsv } from "@/lib/download";
 import {
   Area,
   AreaChart,
@@ -204,7 +205,7 @@ export default function Analytics({ onNavigate }: AnalyticsProps) {
               <option>12 Months</option>
             </select>
           </div>
-          <button type="button" className="rea-outline-button" onClick={() => setNotice("Analytics snapshot prepared") }>
+          <button type="button" className="rea-outline-button" onClick={() => { downloadCsv("atlasgrid-analytics-snapshot.csv", [["Period", "Inspected", "Consultant Approved", "REA Verified", "Compliance %"], ...nationalTrend[period].map((item) => [item.period, item.inspected, item.approved, item.verified, item.compliance])]); setNotice("Analytics snapshot downloaded as CSV."); }}>
             <Download size={16} /> Export snapshot
           </button>
         </div>

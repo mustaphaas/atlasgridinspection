@@ -1,331 +1,96 @@
-import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  Download,
-  Filter,
-  Layers3,
-  MapPin,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Users,
-  X,
-  Zap,
-} from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import NigeriaProjectMap, {
-  nigeriaProjects,
-  nigeriaStateMetrics,
-  type NigeriaProject,
-} from "@/components/NigeriaProjectMap";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Download, Layers3, MapPin, Search, ShieldCheck } from "lucide-react";
+import { KpiCard, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
+import NigeriaProjectMap, { nigeriaProjects, nigeriaStateMetrics, type NigeriaProject } from "@/components/NigeriaProjectMap";
+import { downloadCsv, downloadJson } from "@/lib/download";
 
-type MapFilterState = {
-  search: string;
-  status: string;
-  type: string;
-  state: string;
-  contractor: string;
-  risk: string;
-};
-
-const initialFilters: MapFilterState = {
-  search: "",
-  status: "All statuses",
-  type: "All project types",
-  state: "All states",
-  contractor: "All contractors",
-  risk: "All risk levels",
-};
-
-const statePerformance = Object.entries(nigeriaStateMetrics)
-  .map(([state, values]) => ({
-    state,
-    total: values.total,
-    verified: values.verified,
-    atRisk: values.atRisk,
-    coverage: Math.round((values.verified / values.total) * 100),
-  }))
-  .sort((a, b) => b.total - a.total)
-  .slice(0, 8);
-
-const statusColor: Record<NigeriaProject["status"], string> = {
-  Verified: "#16753A",
-  Active: "#49A972",
-  "Pending verification": "#D6A029",
-  "At Risk": "#D97706",
-  Critical: "#C74343",
-  Inactive: "#A9B4AD",
-};
-
-export default function ProjectMap() {
-  const [filters, setFilters] = useState<MapFilterState>(initialFilters);
-  const [appliedFilters, setAppliedFilters] = useState<MapFilterState>(initialFilters);
-  const [selectedState, setSelectedState] = useState("Kano");
-  const [selectedProject, setSelectedProject] = useState<NigeriaProject | null>(null);
+export default function ProjectMap({ initialState = "Kano", initialProjectId }: { initialState?: string; initialProjectId?: string }) {
+  const [search, setSearch] = useState("");
+  const [state, setState] = useState("All states");
+  const [status, setStatus] = useState("All statuses");
+  const [risk, setRisk] = useState("All risks");
+  const [selectedState, setSelectedState] = useState(initialState);
+  const [selectedProject, setSelectedProject] = useState<NigeriaProject | null>(() => nigeriaProjects.find((project) => project.id === initialProjectId) ?? null);
   const [notice, setNotice] = useState("");
 
-  const filteredProjects = useMemo(() => {
-    const query = appliedFilters.search.trim().toLowerCase();
-    return nigeriaProjects.filter((project) => {
-      const matchesSearch =
-        !query ||
-        [project.id, project.name, project.state, project.lga, project.contractor]
-          .join(" ")
-          .toLowerCase()
-          .includes(query);
-      const matchesStatus =
-        appliedFilters.status === "All statuses" ||
-        project.status === appliedFilters.status;
-      const matchesType =
-        appliedFilters.type === "All project types" ||
-        project.type === appliedFilters.type;
-      const matchesState =
-        appliedFilters.state === "All states" ||
-        project.state === appliedFilters.state;
-      const matchesContractor =
-        appliedFilters.contractor === "All contractors" ||
-        project.contractor === appliedFilters.contractor;
-      const matchesRisk =
-        appliedFilters.risk === "All risk levels" ||
-        project.risk === appliedFilters.risk;
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesType &&
-        matchesState &&
-        matchesContractor &&
-        matchesRisk
-      );
-    });
-  }, [appliedFilters]);
+  useEffect(() => {
+    setSelectedState(initialState);
+    setState(initialState === "All states" ? "All states" : initialState);
+    setSelectedProject(initialProjectId ? nigeriaProjects.find((project) => project.id === initialProjectId) ?? null : null);
+  }, [initialProjectId, initialState]);
 
-  const activeFilters = useMemo(
-    () =>
-      (Object.keys(initialFilters) as (keyof MapFilterState)[]).filter(
-        (key) => appliedFilters[key] !== initialFilters[key],
-      ).length,
-    [appliedFilters],
-  );
+  const filteredProjects = useMemo(() => nigeriaProjects.filter((project) => {
+    const query = search.trim().toLowerCase();
+    return (!query || `${project.name} ${project.id} ${project.contractor} ${project.lga}`.toLowerCase().includes(query)) &&
+      (state === "All states" || project.state === state) &&
+      (status === "All statuses" || project.status === status) &&
+      (risk === "All risks" || project.risk === risk);
+  }), [risk, search, state, status]);
 
-  const mapSummary = [
-    { label: "Projects Mapped", value: "1,284", detail: "National portfolio", icon: Layers3, tone: "green" },
-    { label: "Verified", value: "187", detail: "Authoritative records", icon: ShieldCheck, tone: "green" },
-    { label: "Active", value: "946", detail: "Currently monitored", icon: Zap, tone: "mint" },
-    { label: "At Risk", value: "16", detail: "Require attention", icon: AlertTriangle, tone: "rose" },
-    { label: "States + FCT", value: "36 + 1", detail: "National coverage", icon: MapPin, tone: "gold" },
-  ] as const;
-
-  const selectedMetric = nigeriaStateMetrics[selectedState] ?? {
-    total: filteredProjects.filter((project) => project.state === selectedState).length,
-    active: filteredProjects.filter((project) => project.state === selectedState && project.status === "Active").length,
-    verified: filteredProjects.filter((project) => project.state === selectedState && project.status === "Verified").length,
-    atRisk: filteredProjects.filter((project) => project.state === selectedState && (project.risk === "High" || project.risk === "Critical")).length,
-  };
-
-  const updateFilter = (key: keyof MapFilterState, value: string) => {
-    setFilters((current) => ({ ...current, [key]: value }));
-  };
+  const selectedMetric = nigeriaStateMetrics[selectedState] ?? { total: 0, active: 0, verified: 0, atRisk: 0 };
+  const stateProjects = filteredProjects.filter((project) => project.state === selectedState);
+  const verified = nigeriaProjects.filter((project) => project.status === "Verified").length;
+  const atRisk = nigeriaProjects.filter((project) => project.risk === "High" || project.risk === "Critical").length;
 
   return (
-    <motion.section
-      className="rea-project-map-page"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-    >
-      <header className="rea-page-heading">
-        <div>
-          <div className="rea-page-kicker"><span /> NATIONAL PROJECT INTELLIGENCE</div>
-          <h1>Project Map</h1>
-          <p>Explore REA projects across Nigeria by status, verification coverage, contractor and programme risk.</p>
-        </div>
-        <div className="rea-page-heading-actions">
-          <div className="rea-data-freshness">
-            <span><i /> Map online</span>
-            <b>{filteredProjects.length} sample project markers visible</b>
-            <small>State boundaries and project coordinates enabled</small>
-          </div>
-          <button type="button" className="rea-outline-button" onClick={() => setNotice("Map data export prepared") }>
-            <Download size={16} /> Export map data
-          </button>
-        </div>
-      </header>
+    <section className="ag-page ag-map-page">
+      <PageTitle
+        eyebrow="REA ADMIN / GEOSPATIAL OVERSIGHT"
+        title="Project Map"
+        description="Explore project coverage, verification progress and risk across Nigeria. Click any state to enlarge and focus its project locations."
+        meta={<><span className="ag-live-dot" /> Map data synchronized <span>Project coordinates from controlled contract records</span></>}
+        actions={<button className="ag-button ag-button-outline" onClick={() => { downloadCsv("atlasgrid-project-map.csv", [["Project ID", "Project", "State", "LGA", "Contractor", "Status", "Risk", "Latitude", "Longitude"], ...filteredProjects.map((project) => [project.id, project.name, project.state, project.lga, project.contractor, project.status, project.risk, project.latitude, project.longitude])]); setNotice("Filtered project-map data downloaded as CSV."); }}><Download size={16} /> Export map</button>}
+      />
 
-      <div className="rea-map-kpi-strip">
-        {mapSummary.map(({ label, value, detail, icon: Icon, tone }, index) => (
-          <motion.div
-            key={label}
-            className={`rea-map-kpi ${tone}`}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.055, duration: 0.38 }}
-          >
-            <span><Icon size={18} /></span>
-            <div><small>{label}</small><b>{value}</b><em>{detail}</em></div>
-          </motion.div>
-        ))}
+      {notice && <button className="ag-notice" onClick={() => setNotice("")}>{notice}<span>×</span></button>}
+
+      <div className="ag-kpi-grid ag-kpi-grid-5">
+        <KpiCard label="Mapped Projects" value="1,284" detail="National programme portfolio" icon={Layers3} tone="green" />
+        <KpiCard label="States Covered" value="36 + FCT" detail="Nationwide coverage" icon={MapPin} tone="mint" />
+        <KpiCard label="Verified Locations" value={verified} detail="Sample mapped projects" icon={CheckCircle2} tone="green" />
+        <KpiCard label="At-Risk Locations" value={atRisk} detail="High or critical risk" icon={AlertTriangle} tone="rose" />
+        <KpiCard label="Coordinate Integrity" value="99.2%" detail="Valid project coordinates" icon={ShieldCheck} tone="blue" />
       </div>
 
-      <section className="rea-map-filter-panel" aria-label="Project map filters">
-        <div className="rea-map-filter-title">
-          <Filter size={16} />
-          <b>Map filters</b>
-          {activeFilters > 0 && <em>{activeFilters} active</em>}
+      <Panel title="Map filters" subtitle="Filter project markers without changing the controlled project coordinates">
+        <div className="ag-map-filterbar">
+          <label><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search project, ID, contractor or LGA" /></label>
+          <select value={state} onChange={(event) => { setState(event.target.value); if (event.target.value !== "All states") setSelectedState(event.target.value); }}><option>All states</option>{[...new Set(nigeriaProjects.map((project) => project.state))].sort().map((item) => <option key={item}>{item}</option>)}</select>
+          <select value={status} onChange={(event) => setStatus(event.target.value)}><option>All statuses</option>{[...new Set(nigeriaProjects.map((project) => project.status))].map((item) => <option key={item}>{item}</option>)}</select>
+          <select value={risk} onChange={(event) => setRisk(event.target.value)}><option>All risks</option><option>Normal</option><option>Medium</option><option>High</option><option>Critical</option></select>
+          <button className="ag-button ag-button-outline" onClick={() => { setSearch(""); setState("All states"); setStatus("All statuses"); setRisk("All risks"); setSelectedState("Kano"); }}>Reset filters</button>
         </div>
-        <label className="rea-map-search">
-          <span>Search</span>
-          <div><Search size={16} /><input value={filters.search} onChange={(event) => updateFilter("search", event.target.value)} placeholder="Project, ID, contractor or location" /></div>
-        </label>
-        <label><span>Project status</span><select value={filters.status} onChange={(event) => updateFilter("status", event.target.value)}>{["All statuses", "Verified", "Active", "Pending verification", "At Risk", "Critical"].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label><span>Project type</span><select value={filters.type} onChange={(event) => updateFilter("type", event.target.value)}>{["All project types", "Solar mini-grid", "Distribution extension", "Institutional solar", "Productive-use energy"].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label><span>State</span><select value={filters.state} onChange={(event) => { updateFilter("state", event.target.value); if (event.target.value !== "All states") setSelectedState(event.target.value); }}>{["All states", ...Object.keys(nigeriaStateMetrics)].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label><span>Contractor</span><select value={filters.contractor} onChange={(event) => updateFilter("contractor", event.target.value)}>{["All contractors", ...Array.from(new Set(nigeriaProjects.map((project) => project.contractor)))].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <label><span>Risk level</span><select value={filters.risk} onChange={(event) => updateFilter("risk", event.target.value)}>{["All risk levels", "Normal", "Medium", "High", "Critical"].map((item) => <option key={item}>{item}</option>)}</select></label>
-        <button
-          type="button"
-          className="rea-filter-reset"
-          onClick={() => {
-            setFilters(initialFilters);
-            setAppliedFilters(initialFilters);
-            setSelectedState("Kano");
-            setNotice("Map filters reset");
-          }}
-        >
-          <RefreshCw size={15} /> Reset
-        </button>
-        <button
-          type="button"
-          className="rea-primary-button"
-          onClick={() => {
-            setAppliedFilters(filters);
-            setNotice("Map filters applied");
-          }}
-        >
-          Apply filters
-        </button>
-      </section>
+      </Panel>
 
-      {notice && (
-        <button type="button" className="rea-inline-notice" onClick={() => setNotice("")}>
-          <CheckCircle2 size={16} />
-          <span>{notice}</span>
-          <X size={15} />
-        </button>
-      )}
-
-      <section className="rea-map-primary-card">
-        <header>
-          <div>
-            <h2>National Project Coverage</h2>
-            <p>Interactive Nigeria map using state boundaries and project coordinates.</p>
-          </div>
-          <span className="rea-map-result-count">{filteredProjects.length} markers shown</span>
-        </header>
+      <Panel title="Nigeria Project Coverage" subtitle="Select a state to zoom into its boundary and reveal nearby project markers" className="ag-full-map-panel">
         <NigeriaProjectMap
           projects={filteredProjects}
-          selectedState={appliedFilters.state === "All states" ? selectedState : appliedFilters.state}
+          selectedState={selectedState}
           showLabels
           showLegend
           showSidePanel
-          onStateSelect={(state) => {
-            setSelectedState(state);
-            setSelectedProject(null);
-          }}
+          onStateSelect={(value) => { setSelectedState(value); setState(value); }}
           onProjectSelect={(project) => setSelectedProject(project)}
         />
-      </section>
+      </Panel>
 
-      <div className="rea-map-insights-grid">
-        <section className="rea-card rea-state-performance-card">
-          <header className="rea-card-header">
-            <div><h2>Verification Coverage by State</h2><p>Verified projects compared with the monitored portfolio.</p></div>
-            <button type="button" className="rea-text-button" onClick={() => setNotice("State performance report opened")}>Full report <ArrowRight size={14} /></button>
-          </header>
-          <div className="rea-state-performance-chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={statePerformance} layout="vertical" margin={{ top: 4, right: 28, left: 4, bottom: 4 }}>
-                <CartesianGrid stroke="#E8F0EB" strokeDasharray="4 6" horizontal={false} />
-                <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} tick={{ fill: "#71847A", fontSize: 12 }} />
-                <YAxis dataKey="state" type="category" tickLine={false} axisLine={false} width={72} tick={{ fill: "#3F5C4A", fontSize: 12, fontWeight: 600 }} />
-                <Tooltip formatter={(value: number) => [`${value}%`, "Verification coverage"]} cursor={{ fill: "#F4FAF6" }} />
-                <Bar dataKey="coverage" fill="#3C9A69" radius={[0, 6, 6, 0]} barSize={13} animationDuration={900} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        <section className="rea-card rea-selected-state-card">
-          <header className="rea-card-header">
-            <div><h2>{selectedState} State</h2><p>Current project and verification summary.</p></div>
-            <span className="rea-state-status-pill">Selected</span>
-          </header>
-          <div className="rea-selected-state-kpis">
+      <div className="ag-map-bottom-grid">
+        <Panel title={`${selectedState} portfolio`} subtitle="Selected-state verification and risk summary">
+          <div className="ag-state-summary">
             <div><b>{selectedMetric.total}</b><small>Total projects</small></div>
             <div><b>{selectedMetric.active}</b><small>Active</small></div>
             <div><b>{selectedMetric.verified}</b><small>Verified</small></div>
-            <div className="warning"><b>{selectedMetric.atRisk}</b><small>At risk</small></div>
+            <div><b>{selectedMetric.atRisk}</b><small>At risk</small></div>
           </div>
-          <div className="rea-selected-state-progress">
-            <div><span>Verification coverage</span><b>{selectedMetric.total ? Math.round((selectedMetric.verified / selectedMetric.total) * 100) : 0}%</b></div>
-            <i><em style={{ width: `${selectedMetric.total ? (selectedMetric.verified / selectedMetric.total) * 100 : 0}%` }} /></i>
-          </div>
-          <div className="rea-selected-projects-list">
-            {nigeriaProjects.filter((project) => project.state === selectedState).slice(0, 4).map((project) => (
-              <button type="button" key={project.id} onClick={() => setSelectedProject(project)}>
-                <i style={{ background: statusColor[project.status] }} />
-                <span><b>{project.name}</b><small>{project.lga} · {project.contractor}</small></span>
-                <em>{project.status}</em>
-              </button>
-            ))}
-          </div>
-        </section>
+          <div className="ag-state-coverage"><span><b>Verification coverage</b><strong>{selectedMetric.total ? Math.round((selectedMetric.verified / selectedMetric.total) * 100) : 0}%</strong></span><i><em style={{ width: `${selectedMetric.total ? (selectedMetric.verified / selectedMetric.total) * 100 : 0}%` }} /></i></div>
+        </Panel>
 
-        <section className="rea-card rea-map-intelligence-card">
-          <header className="rea-card-header">
-            <div><h2>Map Intelligence</h2><p>Live geographic signals from field and verification data.</p></div>
-          </header>
-          <div className="rea-map-intelligence-list">
-            <div><span><ShieldCheck size={17} /></span><p><b>Highest verification coverage</b><small>FCT leads at 94% of monitored projects.</small></p></div>
-            <div><span><AlertTriangle size={17} /></span><p><b>Largest risk concentration</b><small>Kano currently has 8 projects at risk.</small></p></div>
-            <div><span><Users size={17} /></span><p><b>Beneficiary confirmation</b><small>941 beneficiaries have been confirmed on site.</small></p></div>
-            <div><span><Zap size={17} /></span><p><b>Capacity verification</b><small>875 kW of installed capacity is verified.</small></p></div>
-          </div>
-        </section>
+        <Panel title={`Projects around ${selectedState}`} subtitle={`${stateProjects.length} visible projects after filters`}>
+          <div className="ag-map-project-list">{stateProjects.length ? stateProjects.map((project) => <button key={project.id} onClick={() => setSelectedProject(project)}><i className={`ag-map-dot ag-map-dot-${project.risk.toLowerCase()}`} /><div><b>{project.name}</b><small>{project.id} · {project.lga} · {project.contractor}</small></div><StatusBadge status={project.status} /></button>) : <div className="ag-submitted-state"><MapPin size={22} /><div><b>No matching project markers</b><p>Clear filters or choose another state.</p></div></div>}</div>
+        </Panel>
       </div>
 
-      {selectedProject && (
-        <motion.aside
-          className="rea-map-project-drawer"
-          initial={{ opacity: 0, x: 40 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 40 }}
-        >
-          <button type="button" className="rea-map-project-drawer-close" onClick={() => setSelectedProject(null)} aria-label="Close project details"><X size={16} /></button>
-          <small>{selectedProject.id} · {selectedProject.state}</small>
-          <h2>{selectedProject.name}</h2>
-          <p>{selectedProject.lga} · {selectedProject.type}</p>
-          <dl>
-            <div><dt>Contractor</dt><dd>{selectedProject.contractor}</dd></div>
-            <div><dt>Status</dt><dd><i style={{ background: statusColor[selectedProject.status] }} />{selectedProject.status}</dd></div>
-            <div><dt>Risk</dt><dd>{selectedProject.risk}</dd></div>
-            <div><dt>Last inspection</dt><dd>{selectedProject.inspectionDate}</dd></div>
-            <div><dt>Verified capacity</dt><dd>{selectedProject.capacityKw ?? 0} kW</dd></div>
-            <div><dt>Beneficiaries</dt><dd>{selectedProject.beneficiaries ?? 0}</dd></div>
-          </dl>
-          <button type="button" className="rea-primary-button full" onClick={() => setNotice(`${selectedProject.name} opened`)}>View full project <ArrowRight size={15} /></button>
-        </motion.aside>
-      )}
-    </motion.section>
+      {selectedProject && <div className="ag-map-project-drawer"><button onClick={() => setSelectedProject(null)}>×</button><div className="ag-eyebrow"><span />PROJECT RECORD</div><h2>{selectedProject.name}</h2><StatusBadge status={selectedProject.status} /><div className="ag-detail-grid"><div><small>Project ID</small><b>{selectedProject.id}</b></div><div><small>Location</small><b>{selectedProject.lga}, {selectedProject.state}</b></div><div><small>Contractor</small><b>{selectedProject.contractor}</b></div><div><small>Risk</small><StatusBadge status={selectedProject.risk} /></div><div><small>Last inspection</small><b>{selectedProject.inspectionDate}</b></div><div><small>Capacity</small><b>{selectedProject.capacityKw ?? 0} kW</b></div><div><small>Beneficiaries</small><b>{selectedProject.beneficiaries ?? 0}</b></div><div><small>Coordinates</small><b>{selectedProject.latitude}, {selectedProject.longitude}</b></div></div><button className="ag-button ag-button-primary" onClick={() => { downloadJson(`${selectedProject.id}-project-record.json`, selectedProject); setNotice(`${selectedProject.id} project record downloaded.`); }}>Download project record</button></div>}
+    </section>
   );
 }

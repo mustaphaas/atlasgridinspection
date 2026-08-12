@@ -1,139 +1,301 @@
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
-  ArrowRight,
+  Building2,
   CheckCircle2,
-  ChevronDown,
+  ClipboardCheck,
   Download,
   Search,
   ShieldCheck,
-  Users,
-  Wrench,
-  X,
 } from "lucide-react";
+import { KpiCard, Modal, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
+import { useAtlasGrid, type ClaimRecord } from "@/context/AtlasGridContext";
+import { downloadCsv } from "@/lib/download";
 
-type Contractor = {
+type ContractorSummary = {
   name: string;
-  id: string;
   projects: number;
   inspected: number;
   verified: number;
   compliance: number;
   findings: number;
-  reinspections: number;
-  risk: "Low" | "Medium" | "High" | "Critical";
-  status: "Active" | "Under Review" | "Restricted";
-  states: string;
-  lastInspection: string;
+  critical: number;
+  reinspection: number;
+  risk: "Low Risk" | "Medium Risk" | "High Risk" | "Critical";
+  states: string[];
+  records: ClaimRecord[];
 };
 
-const contractors: Contractor[] = [
-  { name: "ABC Energy Ltd", id: "REA-CTR-02481", projects: 42, inspected: 39, verified: 34, compliance: 92, findings: 3, reinspections: 1, risk: "Low", status: "Active", states: "Kano, Kaduna, Katsina", lastInspection: "08 Aug 2026" },
-  { name: "GreenVolt Nigeria Ltd", id: "REA-CTR-02214", projects: 31, inspected: 29, verified: 25, compliance: 84, findings: 7, reinspections: 3, risk: "Medium", status: "Active", states: "Kano, FCT, Gombe", lastInspection: "07 Aug 2026" },
-  { name: "Arewa Solar Concepts", id: "REA-CTR-01908", projects: 28, inspected: 25, verified: 20, compliance: 79, findings: 9, reinspections: 4, risk: "High", status: "Under Review", states: "Sokoto, Niger, Yobe", lastInspection: "06 Aug 2026" },
-  { name: "Sahel Power Systems Ltd", id: "REA-CTR-03145", projects: 24, inspected: 21, verified: 17, compliance: 76, findings: 11, reinspections: 5, risk: "High", status: "Under Review", states: "Kaduna, Bauchi, Borno", lastInspection: "05 Aug 2026" },
-  { name: "SolarTech Nigeria", id: "REA-CTR-01872", projects: 19, inspected: 17, verified: 15, compliance: 88, findings: 4, reinspections: 2, risk: "Medium", status: "Active", states: "Lagos, Benue", lastInspection: "03 Aug 2026" },
-];
-
-const kpis = [
-  ["Total Contractors", "184", "Registered contractors", Users],
-  ["Active Contractors", "156", "Currently monitored", CheckCircle2],
-  ["Projects Under Contractors", "427", "Across the programme", ShieldCheck],
-  ["Average Compliance", "87%", "Verified project average", CheckCircle2],
-  ["Contractors At Risk", "12", "Require programme attention", AlertTriangle],
-  ["Open Corrective Actions", "71", "Awaiting contractor closure", Wrench],
-] as const;
+type ContractorTab = "Overview" | "Projects" | "Inspections" | "Findings" | "Corrective actions";
 
 export default function Contractors() {
+  const { claims } = useAtlasGrid();
   const [search, setSearch] = useState("");
-  const [risk, setRisk] = useState("All risk levels");
-  const [selected, setSelected] = useState<Contractor | null>(null);
+  const [risk, setRisk] = useState("All risks");
+  const [selected, setSelected] = useState<ContractorSummary | null>(null);
+  const [tab, setTab] = useState<ContractorTab>("Overview");
   const [notice, setNotice] = useState("");
 
-  const filtered = useMemo(
-    () => contractors.filter((contractor) => {
-      const matchesSearch = `${contractor.name} ${contractor.id} ${contractor.states}`.toLowerCase().includes(search.toLowerCase());
-      const matchesRisk = risk === "All risk levels" || contractor.risk === risk;
-      return matchesSearch && matchesRisk;
-    }),
-    [search, risk],
+  const contractors = useMemo<ContractorSummary[]>(() => {
+    const grouped = new Map<string, ClaimRecord[]>();
+    claims.forEach((claim) => grouped.set(claim.contractor, [...(grouped.get(claim.contractor) ?? []), claim]));
+
+    return [...grouped.entries()]
+      .map(([name, records], index) => {
+        const inspected = records.filter((record) => record.inspectionProgress > 0).length;
+        const verified = records.filter((record) => record.status === "Verified").length;
+        const findings = records.reduce((sum, record) => sum + (record.findings ?? 0), 0);
+        const critical = records.reduce((sum, record) => sum + (record.criticalFindings ?? 0), 0);
+        const reinspection = records.filter((record) => record.status === "Re-inspection Required").length;
+        const compliance = Math.max(68, Math.min(96, 92 - findings * 2 - critical * 5 + verified * 2 - index));
+        const riskLevel: ContractorSummary["risk"] = critical > 1
+          ? "Critical"
+          : reinspection > 0 || compliance < 78
+            ? "High Risk"
+            : compliance < 86
+              ? "Medium Risk"
+              : "Low Risk";
+
+        return {
+          name,
+          projects: records.length,
+          inspected,
+          verified,
+          compliance,
+          findings,
+          critical,
+          reinspection,
+          risk: riskLevel,
+          states: [...new Set(records.map((record) => record.state))],
+          records,
+        };
+      })
+      .sort((a, b) => b.projects - a.projects);
+  }, [claims]);
+
+  const filtered = contractors.filter((contractor) =>
+    contractor.name.toLowerCase().includes(search.toLowerCase()) &&
+    (risk === "All risks" || contractor.risk === risk),
   );
+  const averageCompliance = contractors.length
+    ? Math.round(contractors.reduce((sum, item) => sum + item.compliance, 0) / contractors.length)
+    : 0;
 
-  return (
-    <section className="contractors-page">
-      <header className="workspace-page-header">
-        <div>
-          <div className="workspace-kicker">REA ADMIN / CONTRACTOR OVERSIGHT</div>
-          <h1>Contractors</h1>
-          <p>Monitor contractor delivery, compliance, findings, re-inspections and verification outcomes.</p>
+  const openContractor = (contractor: ContractorSummary) => {
+    setSelected(contractor);
+    setTab("Overview");
+  };
+
+  const exportContractors = () => {
+    downloadCsv("atlasgrid-contractor-performance.csv", [
+      ["Contractor", "Projects", "Inspected", "Verified", "Compliance %", "Findings", "Critical", "Re-inspections", "Risk", "States"],
+      ...filtered.map((contractor) => [
+        contractor.name,
+        contractor.projects,
+        contractor.inspected,
+        contractor.verified,
+        contractor.compliance,
+        contractor.findings,
+        contractor.critical,
+        contractor.reinspection,
+        contractor.risk,
+        contractor.states.join("; "),
+      ]),
+    ]);
+    setNotice("Filtered contractor performance downloaded as CSV.");
+  };
+
+  const exportSelected = () => {
+    if (!selected) return;
+    downloadCsv(`${selected.name.replace(/\W+/g, "-").toLowerCase()}-oversight.csv`, [
+      ["Claim", "Project", "State", "Status", "Inspection Progress", "Score", "Findings", "Critical Findings", "Field Officer"],
+      ...selected.records.map((record) => [
+        record.id,
+        record.project,
+        record.state,
+        record.status,
+        `${record.inspectionProgress}%`,
+        record.score ?? "",
+        record.findings ?? 0,
+        record.criticalFindings ?? 0,
+        record.fieldOfficer ?? "Not assigned",
+      ]),
+    ]);
+    setNotice(`${selected.name} oversight report downloaded.`);
+  };
+
+  const renderTab = () => {
+    if (!selected) return null;
+
+    if (tab === "Overview") {
+      return (
+        <div className="ag-detail-grid ag-contractor-tab-content">
+          <div><small>States of operation</small><b>{selected.states.join(", ")}</b></div>
+          <div><small>Re-inspections</small><b>{selected.reinspection}</b></div>
+          <div><small>Risk rating</small><StatusBadge status={selected.risk} /></div>
+          <div><small>Performance basis</small><b>Verified inspection outcomes</b></div>
         </div>
-        <button className="workspace-secondary-action" onClick={() => setNotice("Contractor report export prepared")}><Download size={15} /> Export</button>
-      </header>
+      );
+    }
 
-      {notice && <button className="workspace-notice" onClick={() => setNotice("")}><CheckCircle2 size={14} /> {notice}<X size={13} /></button>}
-
-      <div className="contractors-kpis">
-        {kpis.map(([label, value, detail, Icon]) => (
-          <div key={label} className="contractors-kpi">
-            <span><Icon size={17} /></span><small>{label}</small><b>{value}</b><em>{detail}</em>
-          </div>
-        ))}
-      </div>
-
-      <section className="contractors-filter-card">
-        <div className="contractors-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search contractor name, ID or state" /></div>
-        <label>State<select><option>All states</option><option>Kano</option><option>Kaduna</option><option>Bauchi</option></select></label>
-        <label>Project Type<select><option>All project types</option><option>Solar mini-grid</option></select></label>
-        <label>Compliance<select><option>All compliance levels</option><option>90% and above</option><option>Below 80%</option></select></label>
-        <label>Risk Level<select value={risk} onChange={(event) => setRisk(event.target.value)}><option>All risk levels</option><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></label>
-        <button className="contractors-reset" onClick={() => { setSearch(""); setRisk("All risk levels"); }}>Reset</button>
-      </section>
-
-      <section className="contractors-register-card">
-        <header>
-          <div><h2>Contractor performance register</h2><p>{filtered.length} contractors shown · Performance is based on verified inspection outcomes.</p></div>
-          <button onClick={() => setNotice("Highest-risk contractors shown first")}>Sort: Risk <ChevronDown size={13} /></button>
-        </header>
-        <div className="contractors-table-scroll">
-          <table className="contractors-table">
-            <thead><tr><th>CONTRACTOR</th><th>PROJECTS</th><th>INSPECTED</th><th>VERIFIED</th><th>COMPLIANCE</th><th>OPEN FINDINGS</th><th>RE-INSPECTIONS</th><th>RISK</th><th>STATUS</th><th>ACTION</th></tr></thead>
-            <tbody>{filtered.map((contractor) => (
-              <tr key={contractor.id} onClick={() => setSelected(contractor)}>
-                <td><div className="contractor-identity"><span>{contractor.name.split(" ").slice(0, 2).map((part) => part[0]).join("")}</span><div><b>{contractor.name}</b><small>{contractor.id}</small></div></div></td>
-                <td>{contractor.projects}</td><td>{contractor.inspected}</td><td>{contractor.verified}</td>
-                <td><div className="contractor-compliance"><b>{contractor.compliance}%</b><i><em style={{ width: `${contractor.compliance}%` }} /></i></div></td>
-                <td><strong className={contractor.findings >= 9 ? "attention" : ""}>{contractor.findings}</strong></td>
-                <td>{contractor.reinspections}</td>
-                <td><span className={`contractor-risk ${contractor.risk.toLowerCase()}`}>{contractor.risk}</span></td>
-                <td><span className={`contractor-state ${contractor.status.toLowerCase().replace(/ /g, "-")}`}>{contractor.status}</span></td>
-                <td><button className="contractor-row-action" onClick={(event) => { event.stopPropagation(); setSelected(contractor); }}>View <ArrowRight size={12} /></button></td>
+    if (tab === "Projects") {
+      return (
+        <div className="ag-table-scroll ag-contractor-tab-content">
+          <table className="ag-table">
+            <thead><tr><th>Project</th><th>Location</th><th>Claim</th><th>Status</th></tr></thead>
+            <tbody>{selected.records.map((record) => (
+              <tr key={record.id}>
+                <td><b>{record.project}</b><small>{record.projectId}</small></td>
+                <td><b>{record.state}</b><small>{record.lga} · {record.community}</small></td>
+                <td>{record.id}</td>
+                <td><StatusBadge status={record.status} /></td>
               </tr>
             ))}</tbody>
           </table>
         </div>
-      </section>
+      );
+    }
 
-      <div className="contractor-insight-grid">
-        <section className="contractor-insight-card"><h3>Risk distribution</h3><div className="risk-distribution"><span><i className="low" /> Low Risk <b>102</b></span><span><i className="medium" /> Medium Risk <b>58</b></span><span><i className="high" /> High Risk <b>18</b></span><span><i className="critical" /> Critical <b>6</b></span></div></section>
-        <section className="contractor-insight-card"><h3>Current programme signals</h3><div className="contractor-signals"><span>Contractors with critical findings <b>9</b></span><span>Corrective actions overdue <b>14</b></span><span>Repeated re-inspections <b>11</b></span><span>Average finding closure time <b>8.4 days</b></span></div></section>
+    if (tab === "Inspections") {
+      return (
+        <div className="ag-table-scroll ag-contractor-tab-content">
+          <table className="ag-table">
+            <thead><tr><th>Claim</th><th>Field Officer</th><th>Progress</th><th>Score</th><th>Outcome</th></tr></thead>
+            <tbody>{selected.records.map((record) => (
+              <tr key={record.id}>
+                <td><b>{record.id}</b><small>{record.project}</small></td>
+                <td>{record.fieldOfficer ?? "Not assigned"}</td>
+                <td><div className="ag-progress-cell"><i><em style={{ width: `${record.inspectionProgress}%` }} /></i><b>{record.inspectionProgress}%</b></div></td>
+                <td>{record.score ? `${record.score}%` : "—"}</td>
+                <td><StatusBadge status={record.status} /></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (tab === "Findings") {
+      return (
+        <div className="ag-table-scroll ag-contractor-tab-content">
+          <table className="ag-table">
+            <thead><tr><th>Claim</th><th>Project</th><th>Findings</th><th>Critical</th><th>Recommendation</th></tr></thead>
+            <tbody>{selected.records.map((record) => (
+              <tr key={record.id}>
+                <td>{record.id}</td>
+                <td>{record.project}</td>
+                <td>{record.findings ?? 0}</td>
+                <td><StatusBadge status={(record.criticalFindings ?? 0) > 0 ? `${record.criticalFindings} critical` : "None"} /></td>
+                <td className="ag-table-detail">{record.recommendation ?? "No finding recommendation recorded."}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      );
+    }
+
+    return (
+      <div className="ag-table-scroll ag-contractor-tab-content">
+        <table className="ag-table">
+          <thead><tr><th>Claim</th><th>Project</th><th>Action status</th><th>Follow-up</th></tr></thead>
+          <tbody>{selected.records.map((record) => {
+            const open = record.status === "Re-inspection Required" || (record.criticalFindings ?? 0) > 0;
+            return (
+              <tr key={record.id}>
+                <td>{record.id}</td>
+                <td>{record.project}</td>
+                <td><StatusBadge status={open ? "Open" : "Closed"} /></td>
+                <td>{open ? record.recommendation ?? "Additional field evidence required." : "No open corrective action."}</td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <section className="ag-page ag-contractors-page">
+      <PageTitle
+        eyebrow="REA ADMIN / CONTRACTOR OVERSIGHT"
+        title="Contractors"
+        description="Monitor contractor project delivery, inspection outcomes, compliance, findings and re-inspection exposure."
+        meta={<><span className="ag-live-dot" /> Performance data synchronized <span>Payment processing is outside AtlasGrid</span></>}
+        actions={<button className="ag-button ag-button-outline" onClick={exportContractors}><Download size={16} /> Export performance</button>}
+      />
+
+      {notice && <button className="ag-notice" onClick={() => setNotice("")}>{notice}<span>×</span></button>}
+
+      <div className="ag-kpi-grid ag-kpi-grid-5">
+        <KpiCard label="Total Contractors" value={contractors.length} detail="With active programme records" icon={Building2} tone="green" />
+        <KpiCard label="Projects Tracked" value={claims.length} detail="Across all contractors" icon={ClipboardCheck} tone="mint" />
+        <KpiCard label="Average Compliance" value={`${averageCompliance}%`} detail="Inspection-based score" icon={ShieldCheck} tone="green" />
+        <KpiCard label="Contractors At Risk" value={contractors.filter((item) => item.risk === "High Risk" || item.risk === "Critical").length} detail="Require programme attention" icon={AlertTriangle} tone="rose" onClick={() => setRisk("High Risk")} />
+        <KpiCard label="Verified Projects" value={claims.filter((claim) => claim.status === "Verified").length} detail="REA verified outcomes" icon={CheckCircle2} tone="blue" />
       </div>
 
-      {selected && <aside className="contractor-drawer">
-        <button className="contractor-drawer-close" onClick={() => setSelected(null)}><X size={16} /></button>
-        <div className="workspace-kicker">CONTRACTOR PROFILE</div>
-        <h2>{selected.name}</h2>
-        <span className={`contractor-risk ${selected.risk.toLowerCase()}`}>{selected.risk} Risk</span>
-        <div className="contractor-profile-metrics"><div><b>{selected.projects}</b><small>Projects</small></div><div><b>{selected.verified}</b><small>Verified</small></div><div><b>{selected.compliance}%</b><small>Compliance</small></div></div>
-        <div className="contractor-profile-details">
-          <div><small>Contractor ID</small><b>{selected.id}</b></div>
-          <div><small>States of Operation</small><b>{selected.states}</b></div>
-          <div><small>Open Findings</small><b>{selected.findings}</b></div>
-          <div><small>Re-inspections</small><b>{selected.reinspections}</b></div>
-          <div><small>Last Inspection</small><b>{selected.lastInspection}</b></div>
-          <div><small>Status</small><b>{selected.status}</b></div>
-        </div>
-        <div className="contractor-profile-actions"><button>View Projects</button><button>View Inspections</button><button>View Findings</button><button>Corrective Actions</button><button>Export Contractor Report</button></div>
-      </aside>}
+      <div className="ag-contractor-layout">
+        <Panel
+          title="Contractor performance register"
+          subtitle={`${filtered.length} contractors shown`}
+          action={(
+            <div className="ag-inline-filters">
+              <label><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search contractor" /></label>
+              <select value={risk} onChange={(event) => setRisk(event.target.value)}><option>All risks</option><option>Low Risk</option><option>Medium Risk</option><option>High Risk</option><option>Critical</option></select>
+            </div>
+          )}
+        >
+          <div className="ag-table-scroll">
+            <table className="ag-table">
+              <thead><tr><th>Contractor</th><th>Projects</th><th>Inspected</th><th>Verified</th><th>Compliance</th><th>Findings</th><th>Re-inspections</th><th>Risk</th><th>Action</th></tr></thead>
+              <tbody>{filtered.map((contractor) => (
+                <tr key={contractor.name} onClick={() => openContractor(contractor)}>
+                  <td><div className="ag-person"><span>{contractor.name.split(" ").map((word) => word[0]).slice(0, 2).join("")}</span><div><b>{contractor.name}</b><small>{contractor.states.join(", ")}</small></div></div></td>
+                  <td>{contractor.projects}</td>
+                  <td>{contractor.inspected}</td>
+                  <td>{contractor.verified}</td>
+                  <td><div className="ag-progress-cell"><i><em style={{ width: `${contractor.compliance}%` }} /></i><b>{contractor.compliance}%</b></div></td>
+                  <td><b>{contractor.findings}</b><small>{contractor.critical} critical</small></td>
+                  <td>{contractor.reinspection}</td>
+                  <td><StatusBadge status={contractor.risk} /></td>
+                  <td><button className="ag-table-action" onClick={(event) => { event.stopPropagation(); openContractor(contractor); }}>View</button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </Panel>
+
+        <Panel title="Risk distribution" subtitle="Current contractor risk profile">
+          <div className="ag-risk-distribution">
+            {["Low Risk", "Medium Risk", "High Risk", "Critical"].map((item) => {
+              const count = contractors.filter((contractor) => contractor.risk === item).length;
+              return <button key={item} onClick={() => setRisk(item)}><StatusBadge status={item} /><b>{count}</b><small>{Math.round((count / Math.max(1, contractors.length)) * 100)}%</small></button>;
+            })}
+          </div>
+          <div className="ag-contractor-insight"><AlertTriangle size={19} /><div><b>Inspection outcomes drive risk</b><p>Risk ratings are calculated from compliance, critical findings and re-inspection history—not payment or procurement data.</p></div></div>
+        </Panel>
+      </div>
+
+      {selected && (
+        <Modal title={selected.name} subtitle="Contractor oversight profile" onClose={() => setSelected(null)} wide>
+          <div className="ag-kpi-grid ag-kpi-grid-4 ag-modal-kpis">
+            <KpiCard label="Projects" value={selected.projects} detail="Current records" icon={ClipboardCheck} tone="green" />
+            <KpiCard label="Verified" value={selected.verified} detail="REA verified" icon={CheckCircle2} tone="mint" />
+            <KpiCard label="Compliance" value={`${selected.compliance}%`} detail="Current score" icon={ShieldCheck} tone="blue" />
+            <KpiCard label="Open Findings" value={selected.findings} detail={`${selected.critical} critical`} icon={AlertTriangle} tone="rose" />
+          </div>
+          <div className="ag-tabs-static">
+            {(["Overview", "Projects", "Inspections", "Findings", "Corrective actions"] as ContractorTab[]).map((item) => (
+              <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>{item}</button>
+            ))}
+          </div>
+          {renderTab()}
+          <div className="ag-modal-actions">
+            <button className="ag-button ag-button-outline" onClick={() => setSelected(null)}>Close</button>
+            <button className="ag-button ag-button-primary" onClick={exportSelected}><Download size={16} /> Export contractor report</button>
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }

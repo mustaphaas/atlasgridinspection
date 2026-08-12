@@ -1,46 +1,220 @@
-import { useMemo, useState } from "react";
-import { ArrowRight, CalendarDays, CheckCircle2, ClipboardCheck, FilePlus2, FileText, Filter, MapPin, Search, ShieldCheck, Upload, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CheckCircle2,
+  ClipboardCheck,
+  FilePlus2,
+  FileText,
+  Filter,
+  Link2,
+  MapPin,
+  Search,
+  ShieldCheck,
+  Upload,
+  Users,
+} from "lucide-react";
+import { KpiCard, Modal, PageTitle, Panel, StatusBadge } from "@/components/ModernUI";
+import { useAtlasGrid, type ClaimRecord, type ContractRecord } from "@/context/AtlasGridContext";
+import { readTabularFile } from "@/lib/tabularImport";
 
-type Claim = { id: string; contract: string; project: string; contractor: string; state: string; consultant: string; status: string; date: string; lga: string; community: string; type: string; coordinates: string; inspection: string };
+const statusOrder = ["New", "Validated", "Consultant Assigned", "Field Officer Assigned", "Arrival Verified", "Inspection In Progress", "Consultant Review", "Pending REA Review", "Verified"];
 
-const claims: Claim[] = [
-  { id: "CLM-2026-00248", contract: "REA/SMG/KN/2026/014", project: "Rimin Gado Solar Mini-Grid", contractor: "Arewa Solar Concepts", state: "Kano", consultant: "Unassigned", status: "New", date: "08 Aug 2026", lga: "Rimin Gado", community: "Rimin Gado", type: "Solar mini-grid", coordinates: "11.62, 8.58", inspection: "Not assigned" },
-  { id: "CLM-2026-00247", contract: "REA/SMG/KD/2026/021", project: "Kachia Rural Electrification", contractor: "Sahel Power Systems Ltd", state: "Kaduna", consultant: "Unassigned", status: "Validated", date: "07 Aug 2026", lga: "Kachia", community: "Awon", type: "Solar mini-grid", coordinates: "9.87, 7.95", inspection: "Awaiting assignment" },
-  { id: "CLM-2026-00246", contract: "REA/SMG/BA/2026/011", project: "Bauchi Community Energy", contractor: "Sahel Power Systems Ltd", state: "Bauchi", consultant: "NorthGrid Consultants", status: "Consultant Assigned", date: "06 Aug 2026", lga: "Bauchi", community: "Bauchi Central", type: "Solar mini-grid", coordinates: "10.31, 9.84", inspection: "Scheduled" },
-  { id: "CLM-2026-00245", contract: "REA/SMG/FC/2026/002", project: "Abuja Satellite Community Grid", contractor: "GreenVolt Nigeria Ltd", state: "FCT", consultant: "Capital Verification Partners", status: "Inspection In Progress", date: "05 Aug 2026", lga: "Abuja Municipal", community: "Kuje Extension", type: "Solar mini-grid", coordinates: "9.08, 7.40", inspection: "Field work in progress" },
-  { id: "CLM-2026-00244", contract: "REA/SMG/KN/2026/021", project: "Tarauni Community Power", contractor: "GreenVolt Nigeria Ltd", state: "Kano", consultant: "NorthGrid Consultants", status: "Consultant Review", date: "04 Aug 2026", lga: "Tarauni", community: "Hotoro", type: "Solar mini-grid", coordinates: "12.02, 8.54", inspection: "Evidence under QA" },
-  { id: "CLM-2026-00243", contract: "REA/SMG/LA/2026/018", project: "Lagos Coastal Energy Point", contractor: "SolarTech Nigeria", state: "Lagos", consultant: "SouthWest Grid Audit", status: "Pending REA Review", date: "03 Aug 2026", lga: "Epe", community: "Coastal Epe", type: "Solar mini-grid", coordinates: "6.58, 3.75", inspection: "Submitted to REA" },
-  { id: "CLM-2026-00242", contract: "REA/SMG/EN/2026/005", project: "Enugu Rural Solar Cluster", contractor: "Sahel Power Systems Ltd", state: "Enugu", consultant: "Eastern Energy Review", status: "Verified", date: "01 Aug 2026", lga: "Nsukka", community: "Nsukka East", type: "Solar mini-grid", coordinates: "6.86, 7.40", inspection: "Completed" },
-  { id: "CLM-2026-00241", contract: "REA/SMG/BO/2026/010", project: "Borno Resilience Power Hub", contractor: "Sahel Power Systems Ltd", state: "Borno", consultant: "NorthGrid Consultants", status: "Re-inspection Required", date: "30 Jul 2026", lga: "Maiduguri", community: "Maiduguri North", type: "Solar mini-grid", coordinates: "11.83, 13.15", inspection: "Return visit required" },
-];
-
-const kpis = [["Total Claims", "248", "All submitted claims", FileText], ["New / Unassigned", "12", "Awaiting consultant assignment", FilePlus2], ["Under Inspection", "48", "Field work in progress", ClipboardCheck], ["Consultant Review", "21", "Awaiting consultant QA", Users], ["Pending REA Review", "37", "Awaiting REA verification", ShieldCheck], ["Verified", "124", "Verification completed", CheckCircle2]] as const;
-const contractRegister = [{ contract: "REA/SMG/KN/2026/014", project: "Rimin Gado Solar Mini-Grid", contractor: "Arewa Solar Concepts", state: "Kano", lga: "Rimin Gado", type: "Solar mini-grid", status: "Active", capacity: "32 kW", beneficiaries: "617", community: "Rimin Gado", dates: "01 Feb 2026 – 31 Jan 2027", coordinates: "11.62, 8.58" }, { contract: "REA/SMG/KD/2026/021", project: "Kachia Rural Electrification", contractor: "Sahel Power Systems Ltd", state: "Kaduna", lga: "Kachia", type: "Solar mini-grid", status: "Active", capacity: "28 kW", beneficiaries: "402", community: "Awon", dates: "15 Jan 2026 – 14 Jan 2027", coordinates: "9.87, 7.95" }];
-const statusClass = (status: string) => status.toLowerCase().replace(/ /g, "-").replace(/\//g, "-");
-const consultantFirms = ["NorthGrid Consultants", "GridSure Advisory", "Capital Verification Partners", "SouthWest Grid Audit", "Eastern Energy Review"];
-
-export default function Claims() {
-  const [search, setSearch] = useState("");
+export default function Claims({ onOpenMap, initialSearch = "" }: { onOpenMap?: (state: string, projectId: string) => void; initialSearch?: string }) {
+  const {
+    claims,
+    contracts,
+    consultants,
+    createClaim,
+    validateClaim,
+    assignConsultant,
+    reaVerify,
+    rejectClaim,
+  } = useAtlasGrid();
+  const [search, setSearch] = useState(initialSearch);
   const [status, setStatus] = useState("All statuses");
-  const [selected, setSelected] = useState<Claim | null>(null);
-  const [showNew, setShowNew] = useState(false);
-  const [step, setStep] = useState(1);
-  const [contractSearch, setContractSearch] = useState("");
-  const [selectedContract, setSelectedContract] = useState<(typeof contractRegister)[number] | null>(null);
+  const [state, setState] = useState("All states");
+  const [selected, setSelected] = useState<ClaimRecord | null>(null);
+  const [newClaimOpen, setNewClaimOpen] = useState(false);
+  const [selectedContract, setSelectedContract] = useState<ContractRecord | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [connectorOpen, setConnectorOpen] = useState(false);
+  const [connectorName, setConnectorName] = useState("REA Project Registry");
+  const [connectorEndpoint, setConnectorEndpoint] = useState("https://api.rea.gov.ng/atlasgrid");
+  const [connectorConnected, setConnectorConnected] = useState(() => {
+    try { return Boolean(window.localStorage.getItem("atlasgrid-rea-connector")); } catch { return false; }
+  });
+  const [consultant, setConsultant] = useState(consultants[0]);
+  const [lead, setLead] = useState("Engr. Fatima Bello");
   const [notice, setNotice] = useState("");
-  const [assignmentTarget, setAssignmentTarget] = useState<Claim | null>(null);
-  const [consultantFirm, setConsultantFirm] = useState("");
-  const filtered = useMemo(() => claims.filter((claim) => `${claim.id} ${claim.contract} ${claim.project} ${claim.contractor}`.toLowerCase().includes(search.toLowerCase()) && (status === "All statuses" || claim.status === status)), [search, status]);
-  const resetNew = () => { setShowNew(false); setStep(1); setSelectedContract(null); setContractSearch(""); };
-  return <section className="claims-workspace">
-    <header className="claims-header"><div><div className="claims-kicker">REA ADMIN / CLAIMS</div><h1>Claims</h1><p>Manage contractor claims for inspection and verification</p></div><div className="claims-actions"><button className="claims-secondary" onClick={() => setNotice("Import accepts Excel and CSV files.")}><Upload size={14} /> Import Claims</button><button className="claims-secondary" onClick={() => setNotice("REA system connection can be configured through an API or approved data connector.")}><ShieldCheck size={14} /> Connect REA System</button><button className="claims-primary" onClick={() => setShowNew(true)}><FilePlus2 size={14} /> New Claim</button></div></header>
-    {notice && <button className="claims-notice" onClick={() => setNotice("")}><CheckCircle2 size={14} /> {notice}<X size={13} /></button>}
-    <div className="claims-kpis">{kpis.map(([label, value, subtitle, Icon]) => <button key={label} onClick={() => setStatus(label === "Total Claims" ? "All statuses" : label === "New / Unassigned" ? "New" : label === "Verified" ? "Verified" : label)}><span><Icon size={17} /></span><small>{label}</small><b>{value}</b><em>{subtitle}</em></button>)}</div>
-    <div className="claims-filter-panel"><div className="claims-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by Claim ID, Contract Number, Project Name or Contractor" /></div><div className="claims-filter-grid"><label>Claim Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option>All statuses</option>{["New", "Validated", "Consultant Assigned", "Inspection In Progress", "Consultant Review", "Pending REA Review", "Verified", "Returned", "Re-inspection Required", "Rejected"].map((item) => <option key={item}>{item}</option>)}</select></label>{["State", "LGA", "Contractor", "Consultant", "Project Type", "Submission Date"].map((label) => <label key={label}>{label}<select><option>All {label.toLowerCase()}s</option><option>{label === "State" ? "Kano" : label === "LGA" ? "Tarauni" : label === "Project Type" ? "Solar mini-grid" : "This month"}</option></select></label>)}<button className="claims-reset" onClick={() => { setSearch(""); setStatus("All statuses"); }}>Reset</button><button className="claims-apply" onClick={() => setNotice("Claims filters applied")}>Apply Filters</button></div></div>
-    <section className="claims-table-panel"><header className="claims-table-head"><div><h2>Claims register</h2><p>{filtered.length} claims shown · New and unassigned claims require action</p></div><button onClick={() => setNotice("Claims export prepared")}>Export register <ArrowRight size={13} /></button></header><div className="claims-table-scroll"><table className="claims-table"><thead><tr>{["Claim ID", "Contract Number", "Project", "Contractor", "State", "Consultant", "Status", "Submitted Date", "Actions"].map((heading) => <th key={heading}>{heading}</th>)}</tr></thead><tbody>{filtered.map((claim) => <tr key={claim.id} onClick={() => setSelected(claim)}><td><b>{claim.id}</b></td><td>{claim.contract}</td><td><b>{claim.project}</b><small>{claim.lga}</small></td><td>{claim.contractor}</td><td>{claim.state}</td><td>{claim.consultant}</td><td><span className={`claim-status ${statusClass(claim.status)}`}>{claim.status}</span></td><td>{claim.date}</td><td><button className="claims-view" onClick={(event) => { event.stopPropagation(); setSelected(claim); }}>View <ArrowRight size={12} /></button></td></tr>)}</tbody></table></div></section>
-    {selected && <aside className="claim-detail-panel"><button className="claim-detail-close" onClick={() => setSelected(null)}><X size={16} /></button><div className="claims-kicker">CLAIM DETAIL</div><h2>{selected.id}</h2><span className={`claim-status ${statusClass(selected.status)}`}>{selected.status}</span><div className="claim-detail-grid">{[["Contract Number", selected.contract], ["Project Name", selected.project], ["Contractor", selected.contractor], ["State", selected.state], ["LGA", selected.lga], ["Community", selected.community], ["Submission Date", selected.date], ["Inspection Status", selected.inspection], ["Coordinates", selected.coordinates]].map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}</div><div className="claim-detail-actions"><button onClick={() => setNotice("Full claim details opened")}>View Full Details</button><button onClick={() => { setAssignmentTarget(selected); setConsultantFirm(selected.consultant === "Unassigned" ? "" : selected.consultant); }}>Assign Consultant</button><button onClick={() => setNotice("Contract register opened")}>View Contract</button><button onClick={() => setNotice("Project Map opened")}>View Project Map</button></div></aside>}
+  const fileInput = useRef<HTMLInputElement>(null);
 
-    {assignmentTarget && <div className="claims-modal-backdrop"><section className="claim-assignment-modal"><header><div><div className="claims-kicker">CONSULTANT ASSIGNMENT</div><h2>Assign consultant firm</h2><p>REA assigns the consultant firm. The consultant will assign its own field officer(s).</p></div><button onClick={() => setAssignmentTarget(null)}><X size={18} /></button></header><div className="claim-assignment-context"><div><small>Claim</small><b>{assignmentTarget.id}</b></div><div><small>Contract</small><b>{assignmentTarget.contract}</b></div><div><small>Project</small><b>{assignmentTarget.project}</b></div><div><small>Location</small><b>{assignmentTarget.lga}, {assignmentTarget.state}</b></div></div><div className="claim-assignment-fields"><label>Consultant Firm<select value={consultantFirm} onChange={(event) => setConsultantFirm(event.target.value)}><option value="">Select consultant firm</option>{consultantFirms.map((firm) => <option key={firm}>{firm}</option>)}</select></label><label>Consultant Lead / Supervisor<input placeholder="Select or enter lead consultant" /></label><label>Inspection Deadline<input type="date" /></label><label>Priority<select><option>Normal</option><option>High</option><option>Urgent</option></select></label><label className="full">Instructions / Notes<textarea placeholder="Inspection scope, special instructions, or REA notes" /></label></div><div className="claim-assignment-note"><Users size={15} /><span><b>Field officer assignment remains with the consultant.</b> REA does not assign individual field officers in this workflow.</span></div><footer><button className="claims-secondary" onClick={() => setAssignmentTarget(null)}>Cancel</button><button className="claims-primary" disabled={!consultantFirm} onClick={() => { setNotice(`${consultantFirm} assigned to ${assignmentTarget.id}`); setAssignmentTarget(null); }}>Assign Consultant <ArrowRight size={14} /></button></footer></section></div>}
-    {showNew && <div className="claims-modal-backdrop"><section className="claims-modal"><header><div><div className="claims-kicker">NEW CLAIM</div><h2>Create claim</h2><p>Link the claim to an existing REA contract/project register.</p></div><button onClick={resetNew}><X size={18} /></button></header><div className="claims-steps">{["Select Contract", "Claim Details", "Supporting Documents", "Review & Submit"].map((label, index) => <span className={step === index + 1 ? "active" : step > index + 1 ? "complete" : ""} key={label}><b>{index + 1}</b>{label}</span>)}</div>{step === 1 && <div className="claim-form-step"><div className="claims-search"><Search size={15} /><input value={contractSearch} onChange={(event) => setContractSearch(event.target.value)} placeholder="Search by Contract Number, Project Name, Contractor, State or LGA" /></div><div className="contract-register">{contractRegister.filter((item) => `${item.contract} ${item.project} ${item.contractor} ${item.state} ${item.lga}`.toLowerCase().includes(contractSearch.toLowerCase())).map((item) => <button className={selectedContract?.contract === item.contract ? "selected" : ""} key={item.contract} onClick={() => setSelectedContract(item)}><span><b>{item.contract}</b><small>{item.project}</small></span><span>{item.contractor}</span><span>{item.state} · {item.lga}</span><ArrowRight size={14} /></button>)}</div>{selectedContract && <div className="contract-summary"><div><small>Selected contract</small><b>{selectedContract.contract}</b></div>{[["Project ID", "REA-KN-2026-014"], ["Project", selectedContract.project], ["Contractor", selectedContract.contractor], ["Location", `${selectedContract.community}, ${selectedContract.state}`], ["Project Type", selectedContract.type], ["Approved Capacity", selectedContract.capacity], ["Expected Beneficiaries", selectedContract.beneficiaries], ["Contract Dates", selectedContract.dates], ["Coordinates", selectedContract.coordinates]].map(([label, value]) => <div key={label}><small>{label}</small><b>{value}</b></div>)}<button onClick={() => setNotice("Approved location opened on Project Map")}><MapPin size={14} /> View on Map</button></div>}</div>}{step === 2 && <div className="claim-form-fields"><label>Claim Reference<input placeholder="Contractor claim reference" /></label><label>Inspection Requested For<input type="date" /></label><label>Submitted By<input placeholder="Name or organisation" /></label><label>Submission Date<input type="date" /></label><label className="full">Claim Description<textarea placeholder="Describe the claim and inspection requested" /></label><label className="full">Notes / Remarks<textarea placeholder="Additional context for validation" /></label></div>}{step === 3 && <div className="claim-upload-step"><div className="claim-upload-box"><Upload size={24} /><b>Upload supporting documents</b><p>Contractor submission, BOQ, completion documents, certificates, PDFs, or other approved evidence.</p><button>Choose files</button></div><div className="claim-file-row"><FileText size={16} /><span><b>contractor-submission.pdf</b><small>2.4 MB · PDF · Uploaded</small></span><CheckCircle2 size={15} /></div></div>}{step === 4 && <div className="claim-review-step"><div className="contract-summary"><div><small>Selected contract</small><b>{selectedContract?.contract ?? "REA/SMG/KN/2026/014"}</b></div><div><small>Project</small><b>{selectedContract?.project ?? "Rimin Gado Solar Mini-Grid"}</b></div><div><small>Contractor</small><b>{selectedContract?.contractor ?? "Arewa Solar Concepts"}</b></div><div><small>Location</small><b>{selectedContract?.community ?? "Rimin Gado"}, {selectedContract?.state ?? "Kano"}</b></div><div><small>Claim details</small><b>Inspection and verification requested</b></div><div><small>Documents</small><b>1 supporting PDF</b></div></div><div className="claim-submit-note"><CheckCircle2 size={16} /> On submission, the claim status becomes <b>New / Awaiting Validation</b>.</div></div>}<footer><button className="claims-secondary" onClick={() => step === 1 ? resetNew() : setStep((value) => value - 1)}>{step === 1 ? "Cancel" : "Back"}</button><button className="claims-primary" disabled={step === 1 && !selectedContract} onClick={() => step < 4 ? setStep((value) => value + 1) : (setNotice("Claim submitted as New / Awaiting Validation"), resetNew())}>{step === 4 ? "Submit Claim" : "Continue"} <ArrowRight size={14} /></button></footer></section></div>}
-  </section>;
+  useEffect(() => {
+    setSearch(initialSearch);
+  }, [initialSearch]);
+
+  const filtered = useMemo(() => claims.filter((claim) => {
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || `${claim.id} ${claim.contractId} ${claim.project} ${claim.contractor} ${claim.consultant ?? ""}`.toLowerCase().includes(query);
+    return matchesSearch && (status === "All statuses" || claim.status === status) && (state === "All states" || claim.state === state);
+  }), [claims, search, state, status]);
+
+  const count = (values: string[]) => claims.filter((claim) => values.includes(claim.status)).length;
+
+  const handleImport = async (file?: File) => {
+    if (!file) return;
+    try {
+      const rows = await readTabularFile(file);
+      const headers = rows[0]?.map((value) => value.trim().toLowerCase()) ?? [];
+      const contractColumn = headers.findIndex((value) => ["contract", "contract id", "contract number", "contract reference"].includes(value));
+      const column = contractColumn >= 0 ? contractColumn : 0;
+      const matched = [...new Set(rows.slice(1).map((row) => row[column]?.trim()).filter((id): id is string => Boolean(id) && contracts.some((contract) => contract.id === id)))];
+      const created = matched.map((contractId) => createClaim(contractId, `REA ${file.name.toLowerCase().endsWith(".xlsx") ? "Excel" : "CSV"} Import`)).filter(Boolean);
+      setNotice(`${file.name} processed. ${created.length} claim${created.length === 1 ? "" : "s"} created from matched contract references.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The selected file could not be imported.");
+    } finally {
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  };
+
+  const submitNewClaim = () => {
+    if (!selectedContract) return;
+    const claim = createClaim(selectedContract.id);
+    setNewClaimOpen(false);
+    setSelectedContract(null);
+    if (claim) {
+      setSelected(claim);
+      setNotice(`${claim.id} created from ${selectedContract.id}.`);
+    }
+  };
+
+  const assignSelectedConsultant = () => {
+    if (!selected) return;
+    assignConsultant(selected.id, consultant, lead);
+    setSelected({ ...selected, status: "Consultant Assigned", consultant, consultantLead: lead });
+    setAssignOpen(false);
+    setNotice(`${consultant} assigned to ${selected.id}.`);
+  };
+
+  const saveConnector = () => {
+    try {
+      const parsed = new URL(connectorEndpoint);
+      if (!/^https?:$/.test(parsed.protocol)) throw new Error("Unsupported protocol");
+      window.localStorage.setItem("atlasgrid-rea-connector", JSON.stringify({ name: connectorName, endpoint: connectorEndpoint, savedAt: new Date().toISOString() }));
+      setConnectorConnected(true);
+      setConnectorOpen(false);
+      setNotice(`${connectorName} configuration saved. Add approved API credentials in the deployment environment to enable live exchange.`);
+    } catch {
+      setNotice("Enter a valid HTTPS API endpoint before saving the REA system connection.");
+    }
+  };
+
+  return (
+    <section className="ag-page ag-claims-page">
+      <PageTitle
+        eyebrow="REA ADMIN / CLAIMS INTAKE"
+        title="Claims"
+        description="Receive claims against registered contracts, validate project details, assign consultant firms and track the complete inspection workflow."
+        meta={<><span className="ag-live-dot" /> Workflow synchronized <span>{claims.length} records in the current workspace</span></>}
+        actions={<><input ref={fileInput} type="file" accept=".csv,.xlsx,.xls" hidden onChange={(event) => handleImport(event.target.files?.[0])} /><button className="ag-button ag-button-outline" onClick={() => fileInput.current?.click()}><Upload size={16} /> Import Excel/CSV</button><button className="ag-button ag-button-outline" onClick={() => setConnectorOpen(true)}><Link2 size={16} /> {connectorConnected ? "REA system connected" : "Connect REA system"}</button><button className="ag-button ag-button-primary" onClick={() => setNewClaimOpen(true)}><FilePlus2 size={16} /> New claim</button></>}
+      />
+
+      {notice && <button className="ag-notice" onClick={() => setNotice("")}>{notice}<span>×</span></button>}
+
+      <div className="ag-kpi-grid ag-kpi-grid-6">
+        <KpiCard label="Total Claims" value={claims.length} detail="Current workflow records" icon={FileText} tone="green" onClick={() => setStatus("All statuses")} />
+        <KpiCard label="New / Unassigned" value={count(["New", "Validated"])} detail="Require REA action" icon={FilePlus2} tone="amber" onClick={() => setStatus("New")} />
+        <KpiCard label="Under Inspection" value={count(["Consultant Assigned", "Field Officer Assigned", "Arrival Verified", "Inspection In Progress", "Re-inspection Required"])} detail="Field workflow active" icon={ClipboardCheck} tone="blue" onClick={() => setStatus("Inspection In Progress")} />
+        <KpiCard label="Consultant Review" value={count(["Consultant Review"])} detail="Awaiting consultant QA" icon={Users} tone="mint" onClick={() => setStatus("Consultant Review")} />
+        <KpiCard label="Pending REA Review" value={count(["Pending REA Review"])} detail="Awaiting final verification" icon={ShieldCheck} tone="amber" onClick={() => setStatus("Pending REA Review")} />
+        <KpiCard label="Verified" value={count(["Verified"])} detail="Authoritative records" icon={CheckCircle2} tone="green" onClick={() => setStatus("Verified")} />
+      </div>
+
+      <Panel title="Claims register" subtitle={`${filtered.length} claims shown · click a row to open the workflow record`} action={<div className="ag-inline-filters"><label><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search claim, contract, project or contractor" /></label><select value={state} onChange={(event) => setState(event.target.value)}><option>All states</option>{[...new Set(claims.map((claim) => claim.state))].map((item) => <option key={item}>{item}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)}><option>All statuses</option>{[...new Set(claims.map((claim) => claim.status))].map((item) => <option key={item}>{item}</option>)}</select><button className="ag-filter-reset" onClick={() => { setSearch(""); setState("All states"); setStatus("All statuses"); }}><Filter size={14} /> Reset</button></div>}>
+        <div className="ag-table-scroll">
+          <table className="ag-table">
+            <thead><tr><th>Claim</th><th>Contract / Project</th><th>Contractor</th><th>Location</th><th>Consultant</th><th>Status</th><th>Updated</th><th>Action</th></tr></thead>
+            <tbody>
+              {filtered.map((claim) => (
+                <tr key={claim.id} onClick={() => setSelected(claim)}>
+                  <td><b>{claim.id}</b><small>{claim.submittedDate}</small></td>
+                  <td><b>{claim.project}</b><small>{claim.contractId}</small></td>
+                  <td>{claim.contractor}</td>
+                  <td><b>{claim.state}</b><small>{claim.lga} · {claim.community}</small></td>
+                  <td>{claim.consultant ?? <span className="ag-muted">Unassigned</span>}</td>
+                  <td><StatusBadge status={claim.status} /></td>
+                  <td>{claim.lastUpdated}</td>
+                  <td><button className="ag-table-action" onClick={(event) => { event.stopPropagation(); setSelected(claim); }}>Open</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      {selected && (
+        <Modal title={selected.id} subtitle={`${selected.project} · ${selected.contractId}`} onClose={() => setSelected(null)} wide>
+          <div className="ag-workflow-strip">
+            {statusOrder.map((item, index) => {
+              const currentIndex = statusOrder.indexOf(selected.status);
+              return <div key={item} className={index <= currentIndex ? "complete" : ""}><span>{index + 1}</span><small>{item}</small></div>;
+            })}
+          </div>
+          <div className="ag-detail-grid">
+            <div><small>Contractor</small><b>{selected.contractor}</b></div>
+            <div><small>Location</small><b>{selected.community}, {selected.lga}, {selected.state}</b></div>
+            <div><small>Approved coordinates</small><b>{selected.coordinates}</b></div>
+            <div><small>Contract capacity</small><b>{selected.capacity}</b></div>
+            <div><small>Expected beneficiaries</small><b>{selected.beneficiaries}</b></div>
+            <div><small>Consultant</small><b>{selected.consultant ?? "Not assigned"}</b></div>
+            <div><small>Field officer</small><b>{selected.fieldOfficer ?? "Consultant will assign"}</b></div>
+            <div><small>Inspection progress</small><b>{selected.inspectionProgress}%</b></div>
+          </div>
+          <div className="ag-coordinate-card"><MapPin size={18} /><div><b>Approved project location</b><small>Coordinates are controlled by the contract register and are read-only during claim intake.</small></div><button onClick={() => { onOpenMap?.(selected.state, selected.projectId); setSelected(null); }}>View map</button></div>
+          <div className="ag-modal-actions ag-modal-actions-between">
+            <div><StatusBadge status={selected.status} /></div>
+            <div>
+              {selected.status === "New" && <button className="ag-button ag-button-primary" onClick={() => { validateClaim(selected.id); setSelected({ ...selected, status: "Validated" }); setNotice(`${selected.id} validated.`); }}>Validate claim</button>}
+              {selected.status === "Validated" && <button className="ag-button ag-button-primary" onClick={() => setAssignOpen(true)}>Assign consultant</button>}
+              {selected.status === "Pending REA Review" && <><button className="ag-button ag-button-outline" onClick={() => { rejectClaim(selected.id, "Returned for additional evidence."); setSelected({ ...selected, status: "Rejected" }); }}>Reject</button><button className="ag-button ag-button-primary" onClick={() => { reaVerify(selected.id); setSelected({ ...selected, status: "Verified" }); setNotice(`${selected.id} verified by REA.`); }}>Verify report</button></>}
+              {!['New', 'Validated', 'Pending REA Review'].includes(selected.status) && <button className="ag-button ag-button-outline" onClick={() => setSelected(null)}>Close</button>}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {newClaimOpen && (
+        <Modal title="Create claim" subtitle="Select an existing REA contract. Project details and coordinates are loaded automatically." onClose={() => { setNewClaimOpen(false); setSelectedContract(null); }} wide>
+          <div className="ag-contract-picker">
+            <div className="ag-contract-list">
+              {contracts.map((contract) => <button key={contract.id} className={selectedContract?.id === contract.id ? "selected" : ""} onClick={() => setSelectedContract(contract)}><span><b>{contract.project}</b><small>{contract.id} · {contract.contractor}</small></span><StatusBadge status={contract.status} /></button>)}
+            </div>
+            <div className="ag-contract-preview">
+              {selectedContract ? <><div className="ag-eyebrow"><span />SELECTED CONTRACT</div><h3>{selectedContract.project}</h3><div className="ag-detail-grid"><div><small>Project ID</small><b>{selectedContract.projectId}</b></div><div><small>Contractor</small><b>{selectedContract.contractor}</b></div><div><small>Location</small><b>{selectedContract.community}, {selectedContract.state}</b></div><div><small>Coordinates</small><b>{selectedContract.coordinates}</b></div><div><small>Capacity</small><b>{selectedContract.capacity}</b></div><div><small>Beneficiaries</small><b>{selectedContract.beneficiaries}</b></div></div></> : <div className="ag-picker-empty"><MapPin size={24} /><b>Select a contract</b><small>Contract details will appear here.</small></div>}
+            </div>
+          </div>
+          <div className="ag-modal-actions"><button className="ag-button ag-button-outline" onClick={() => setNewClaimOpen(false)}>Cancel</button><button className="ag-button ag-button-primary" disabled={!selectedContract} onClick={submitNewClaim}>Submit claim</button></div>
+        </Modal>
+      )}
+
+
+      {connectorOpen && (
+        <Modal title="Connect REA system" subtitle="Store the approved registry endpoint for claim and contract synchronization." onClose={() => setConnectorOpen(false)}>
+          <div className="ag-form-grid ag-form-grid-single">
+            <label>System name<input value={connectorName} onChange={(event) => setConnectorName(event.target.value)} /></label>
+            <label>API endpoint<input type="url" value={connectorEndpoint} onChange={(event) => setConnectorEndpoint(event.target.value)} placeholder="https://api.rea.gov.ng/..." /></label>
+            <label>Synchronization mode<select defaultValue="Two-way"><option>Two-way</option><option>Import only</option><option>Export only</option></select></label>
+          </div>
+          <div className="ag-connector-note"><ShieldCheck size={18} /><div><b>Credentials are not stored in the browser</b><small>Configure secrets and authentication in Cloudflare or your approved backend before enabling production synchronization.</small></div></div>
+          <div className="ag-modal-actions"><button className="ag-button ag-button-outline" onClick={() => setConnectorOpen(false)}>Cancel</button><button className="ag-button ag-button-primary" onClick={saveConnector}>Save connection</button></div>
+        </Modal>
+      )}
+
+      {assignOpen && selected && (
+        <Modal title="Assign consultant" subtitle="REA assigns the consultant firm. The consultant will assign its own field officer." onClose={() => setAssignOpen(false)}>
+          <div className="ag-form-grid ag-form-grid-single"><label>Consultant firm<select value={consultant} onChange={(event) => setConsultant(event.target.value)}>{consultants.map((item) => <option key={item}>{item}</option>)}</select></label><label>Consultant lead<input value={lead} onChange={(event) => setLead(event.target.value)} /></label><label>Inspection deadline<input type="date" defaultValue="2026-08-20" /></label><label>Assignment notes<textarea defaultValue="Complete field verification, evidence capture and consultant QA before submission to REA." /></label></div>
+          <div className="ag-modal-actions"><button className="ag-button ag-button-outline" onClick={() => setAssignOpen(false)}>Cancel</button><button className="ag-button ag-button-primary" onClick={assignSelectedConsultant}>Assign consultant</button></div>
+        </Modal>
+      )}
+    </section>
+  );
 }
