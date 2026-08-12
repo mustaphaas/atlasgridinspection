@@ -58,7 +58,7 @@ export function KpiCard({
   return onClick ? (
     <button type="button" className={`ag-kpi ag-kpi-${tone}`} onClick={onClick}>{content}</button>
   ) : (
-    <div className={`ag-kpi ag-kpi-${tone}`}>{content}</div>
+    <div className={`ag-kpi ag-kpi-${tone}`} tabIndex={0} aria-label={`${label}: ${value}. ${detail}`}>{content}</div>
   );
 }
 

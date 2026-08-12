@@ -468,8 +468,23 @@ export default function NigeriaProjectMap({
   useEffect(() => {
     if (selectedStateProp && selectedStateProp !== "All states") {
       setSelectedState(selectedStateProp);
+      const coordinates = labelCoordinates[selectedStateProp];
+      const stateProjects = projects.filter(
+        (project) => normalizeState(project.state) === normalizeState(selectedStateProp),
+      );
+      const point = coordinates
+        ? projectPoint(coordinates[0], coordinates[1])
+        : stateProjects.length
+          ? {
+              x: stateProjects.reduce((sum, project) => sum + projectPoint(project.latitude, project.longitude).x, 0) / stateProjects.length,
+              y: stateProjects.reduce((sum, project) => sum + projectPoint(project.latitude, project.longitude).y, 0) / stateProjects.length,
+            }
+          : { x: viewMinX + viewWidth / 2, y: viewMinY + viewHeight / 2 };
+      setFocusPoint(point);
+      setZoom(compact ? 1.55 : 2.35);
+      setFocused(true);
     }
-  }, [selectedStateProp]);
+  }, [compact, projects, selectedStateProp]);
 
   useEffect(() => setMapView(mapViewProp), [mapViewProp]);
 
@@ -507,7 +522,7 @@ export default function NigeriaProjectMap({
             }
           : { x: centerX, y: centerY };
       setFocusPoint(point);
-      setZoom(compact ? 1.35 : 1.85);
+      setZoom(compact ? 1.55 : 2.35);
       setFocused(true);
     }
     onStateSelect?.(state);
@@ -566,7 +581,7 @@ export default function NigeriaProjectMap({
             <button
               type="button"
               aria-label="Zoom in"
-              onClick={() => setZoom((value) => Math.min(2.2, value + 0.2))}
+              onClick={() => setZoom((value) => Math.min(3, value + 0.25))}
             >
               <Plus size={16} />
             </button>
@@ -694,6 +709,11 @@ export default function NigeriaProjectMap({
                         fill={statusColors[project.status]}
                       />
                       <circle r="2.4" fill="#ffffff" />
+                      {focused && normalizeState(project.state) === normalizeState(activeState) && (
+                        <text className="ng-project-marker-label" x="12" y="-9">
+                          {project.name.length > 24 ? `${project.name.slice(0, 24)}…` : project.name}
+                        </text>
+                      )}
                       <title>{`${project.name} - ${project.status}`}</title>
                     </g>
                   );
