@@ -47,9 +47,9 @@ export default function Index() {
       case "Contractors":
         return <Contractors />;
       case "Analytics":
-        return <Analytics />;
+        return <Analytics onNavigate={(page) => setActive(page)} />;
       default:
-        return <ReaOverview />;
+        return <ReaOverview onNavigate={(page) => setActive(page)} />;
     }
   };
 
